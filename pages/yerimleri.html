@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yer İmleri — Huffaz</title>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/main.css">
+</head>
+<body>
+
+<div id="loading" class="page-loading">
+  <div class="spinner"></div>
+  <p>Yükleniyor…</p>
+</div>
+
+<div id="app" class="hidden">
+
+  <header class="app-bar">
+    <div class="app-bar-nav-btns">
+      <button class="app-bar-btn" onclick="location.href='../index.html'">← Ana Sayfa</button>
+      <button class="app-bar-btn" onclick="history.back()">← Geri</button>
+    </div>
+    <span class="app-bar-title" style="margin-left:8px">🔖 Yer İmleri</span>
+    <span id="bar-count" class="app-bar-sub"></span>
+  </header>
+
+  <!-- Sekmeler -->
+  <div style="padding:16px 16px 0;max-width:700px;margin:0 auto">
+    <div class="yerimleri-tabs">
+      <button class="yi-tab active" data-yi="sayfa">📄 Sayfa İmleri</button>
+      <button class="yi-tab" data-yi="ayet">📖 Ayet İmleri</button>
+    </div>
+  </div>
+
+  <div id="yi-sayfa" class="bookmark-list"></div>
+  <div id="yi-ayet"  class="bookmark-list hidden"></div>
+
+</div>
+
+<!-- Toast -->
+<div id="toast-container"></div>
+
+<script src="../js/data.js"></script>
+<script src="../js/page_map.js"></script>
+<script src="../js/shared.js"></script>
+<script src="../js/auth.js"></script>
+<script>
+'use strict';
+
+function init() {
+  // Sekme geçişi
+  document.querySelectorAll('.yi-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.yi-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const type = btn.dataset.yi;
+      document.getElementById('yi-sayfa').classList.toggle('hidden', type !== 'sayfa');
+      document.getElementById('yi-ayet').classList.toggle('hidden', type !== 'ayet');
+    });
+  });
+
+  renderAll();
+
+  document.getElementById('loading').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+}
+
+function renderAll() {
+  const all = Bookmarks.all();
+  document.getElementById('bar-count').textContent = `${all.length} yer imi`;
+
+  renderPageBookmarks();
+  renderAyahBookmarks();
+}
+
+function renderPageBookmarks() {
+  const container = document.getElementById('yi-sayfa');
+  const items = Bookmarks.byType('page');
+  container.innerHTML = '';
+
+  if (items.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">📄</div>
+        <h3>Sayfa yer imi yok</h3>
+        <p>Sayfalar bölümünde herhangi bir sayfada 🔖 butonuna basarak yer imi ekleyebilirsiniz.</p>
+      </div>`;
+    return;
+  }
+
+  items.forEach(bm => {
+    const div = document.createElement('div');
+    div.className = 'bookmark-item page-bm';
+    div.innerHTML = `
+      <div class="bm-icon">📄</div>
+      <div class="bm-info">
+        <div class="bm-label">${bm.label}</div>
+        <div class="bm-date">${formatDate(bm.date)}</div>
+      </div>
+      <div class="bm-actions">
+        <button class="btn btn-sm btn-primary bm-git">Git →</button>
+        <button class="btn btn-sm btn-danger bm-sil">Sil</button>
+      </div>
+    `;
+    div.querySelector('.bm-git').addEventListener('click', () => {
+      location.href = `sayfalar.html?p=${bm.ref}`;
+    });
+    div.querySelector('.bm-sil').addEventListener('click', () => {
+      Bookmarks.remove('page', bm.ref);
+      showToast('Yer imi silindi');
+      renderAll();
+    });
+    container.appendChild(div);
+  });
+}
+
+function renderAyahBookmarks() {
+  const container = document.getElementById('yi-ayet');
+  const items = Bookmarks.byType('ayah');
+  container.innerHTML = '';
+
+  if (items.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">📖</div>
+        <h3>Ayet yer imi yok</h3>
+        <p>Sayfalar veya Sureler bölümünde 🔖 butonuna basarak ayet yer imi ekleyebilirsiniz.</p>
+      </div>`;
+    return;
+  }
+
+  items.forEach(bm => {
+    const [sn, an] = bm.ref.split(':').map(Number);
+    // Ayetin metnini bul
+    const ayah = (typeof QURAN_DATA !== 'undefined')
+      ? QURAN_DATA.find(a => a.surahNo === sn && a.ayahNo === an)
+      : null;
+
+    const div = document.createElement('div');
+    div.className = 'bookmark-item';
+    div.innerHTML = `
+      <div class="bm-icon">📖</div>
+      <div class="bm-info" style="min-width:0">
+        <div class="bm-label">${bm.label}</div>
+        ${ayah ? `<div style="font-family:var(--font-ar);font-size:1rem;direction:rtl;margin-top:4px;color:var(--gray-700);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ayah.text}</div>` : ''}
+        <div class="bm-date">${formatDate(bm.date)}</div>
+      </div>
+      <div class="bm-actions">
+        <button class="btn btn-sm btn-primary bm-git">Git →</button>
+        <button class="btn btn-sm btn-danger bm-sil">Sil</button>
+      </div>
+    `;
+    div.querySelector('.bm-git').addEventListener('click', () => {
+      // Hangi sayfada bu ayet var?
+      if (typeof PAGE_MAP !== 'undefined') {
+        for (let p = 1; p <= 604; p++) {
+          const entry = PAGE_MAP[String(p)];
+          if (!entry) continue;
+          const [fs, fa, ls, la] = entry;
+          const afterStart = (sn > fs) || (sn === fs && an >= fa);
+          const beforeEnd  = (sn < ls) || (sn === ls && an <= la);
+          if (afterStart && beforeEnd) {
+            location.href = `sayfalar.html?p=${p}`;
+            return;
+          }
+        }
+      }
+      alert('Sayfa bulunamadı.');
+    });
+    div.querySelector('.bm-sil').addEventListener('click', () => {
+      Bookmarks.remove('ayah', bm.ref);
+      showToast('Yer imi silindi');
+      renderAll();
+    });
+    container.appendChild(div);
+  });
+}
+
+function showToast(msg, type = '') {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = 'toast' + (type ? ' ' + type : '');
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 2800);
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

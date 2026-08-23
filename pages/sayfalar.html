@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sayfalar — Huffaz</title>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/main.css">
+  <style>
+    /* ── Mod Geçiş Butonu ── */
+    .view-mode-bar {
+      background: var(--card);
+      border-bottom: 1px solid var(--gray-200);
+      padding: 8px 16px;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px;
+      box-shadow: var(--shadow-xs);
+      position: sticky; top: var(--header-h); z-index: 250;
+      flex-wrap: wrap;
+    }
+    .mode-toggle {
+      display: flex; background: var(--gray-100);
+      border-radius: var(--r-sm); padding: 3px; gap: 2px;
+    }
+    .mode-btn {
+      padding: 6px 12px; border-radius: 6px;
+      font-size: .8rem; font-weight: 600;
+      background: transparent; color: var(--gray-500);
+      border: none; cursor: pointer; transition: var(--t);
+      white-space: nowrap;
+    }
+    .mode-btn.active {
+      background: var(--card); color: var(--green-800);
+      box-shadow: var(--shadow-xs);
+    }
+
+    /* ── Ayet Listesi Modu ── */
+    .sayfa-container { max-width: 800px; margin: 0 auto; padding: 0 16px 80px; }
+    .sayfa-nav {
+      background: var(--card); border-bottom: 1px solid var(--gray-200);
+      padding: 8px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      box-shadow: var(--shadow-xs); margin-bottom: 8px;
+    }
+    .sayfa-no-badge {
+      background: var(--green-900); color: #fff;
+      padding: 4px 12px; border-radius: var(--r-full);
+      font-size: .8rem; font-weight: 700; white-space: nowrap;
+    }
+    .sayfa-sure-info {
+      font-size: .82rem; color: var(--gray-600); font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .sayfa-icerik {
+      background: var(--card); border-radius: var(--r-lg);
+      margin-top: 8px; box-shadow: var(--shadow); overflow: hidden;
+    }
+    .sure-baslik-satir {
+      background: linear-gradient(135deg, var(--green-950), var(--green-800));
+      color: #fff; padding: 12px 18px; text-align: center;
+    }
+    .sure-baslik-ar { font-family: 'Amiri', serif; font-size: 1.4rem; direction: rtl; }
+    .sure-baslik-tr { font-size: .78rem; opacity: .75; margin-top: 3px; }
+    .besmele {
+      text-align: center; padding: 14px 18px 6px;
+      font-family: 'Amiri', serif; font-size: 1.25rem;
+      color: var(--green-900); direction: rtl;
+    }
+    .ayet-row {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 11px 14px; border-bottom: 1px solid var(--gray-100);
+      cursor: pointer; user-select: none; transition: background var(--t);
+    }
+    .ayet-row:hover { background: var(--gray-50); }
+    .ayet-row.ezber { background: var(--green-50); }
+    .ayet-row.bookmarked { background: #fef9c3; }
+    .ayet-actions {
+      display: flex; flex-direction: column; gap: 4px;
+      flex-shrink: 0; padding-top: 3px;
+    }
+    .ayet-cb-btn, .ayet-bm-btn {
+      width: 22px; height: 22px; border-radius: var(--r-xs);
+      border: 2px solid var(--gray-300); background: transparent;
+      cursor: pointer; display: flex; align-items: center;
+      justify-content: center; font-size: .7rem;
+      color: transparent; transition: var(--t);
+    }
+    .ayet-row.ezber .ayet-cb-btn {
+      background: var(--green-600); border-color: var(--green-600); color: #fff;
+    }
+    .ayet-bm-btn { color: var(--gray-300); }
+    .ayet-row.bookmarked .ayet-bm-btn {
+      background: #fde047; border-color: #ca8a04; color: var(--gray-900);
+    }
+    .ayet-no-circle {
+      width: 24px; height: 24px; flex-shrink: 0; border-radius: 50%;
+      background: var(--gray-100); color: var(--gray-500);
+      display: flex; align-items: center; justify-content: center;
+      font-size: .67rem; font-weight: 700; margin-top: 4px;
+    }
+    .ayet-row.ezber .ayet-no-circle { background: var(--green-100); color: var(--green-700); }
+    .ayet-text-ar {
+      flex: 1; font-family: 'Amiri', serif; font-size: 1.22rem;
+      line-height: 2; direction: rtl; text-align: right; color: var(--gray-900);
+    }
+
+    .sayfa-git-input {
+      width: 60px; padding: 4px 6px; text-align: center;
+      border: 1.5px solid var(--gray-300); border-radius: var(--r-sm);
+      font-size: .8rem; outline: none; background: #fff;
+    }
+    .sayfa-git-input:focus { border-color: var(--green-600); }
+    .cuz-badge {
+      background: var(--green-100); color: var(--green-800);
+      padding: 3px 9px; border-radius: var(--r-full);
+      font-size: .72rem; font-weight: 600; white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading" class="page-loading">
+  <div class="spinner"></div>
+  <p>Mushaf yükleniyor…</p>
+</div>
+
+<div id="app" class="hidden">
+
+  <!-- App Bar -->
+  <header class="app-bar">
+    <div class="app-bar-nav-btns">
+      <button class="app-bar-btn" onclick="location.href='../index.html'">← Ana Sayfa</button>
+      <button class="app-bar-btn" onclick="history.back()">← Geri</button>
+    </div>
+    <span class="app-bar-title" id="bar-title" style="margin-left:8px">📄 Sayfalar</span>
+    <span id="bar-cuz" class="app-bar-sub"></span>
+  </header>
+
+  <!-- Üst Bar: Mod Seçimi, Kuran Yönüne Uygun Navigasyon Grubu, Yer İmi -->
+  <div class="view-mode-bar">
+    <!-- Sol: Mod Toggle & Tek/Çift Switch -->
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="mode-toggle">
+        <button id="btn-mode-liste"  class="mode-btn active" onclick="setMode('liste')">📋 Ayet Listesi</button>
+        <button id="btn-mode-mushaf" class="mode-btn"        onclick="setMode('mushaf')">📖 Orijinal Mushaf</button>
+      </div>
+
+      <div id="spread-switch-box" class="spread-switch-container hidden">
+        <button id="btn-spread-single" class="spread-mode-btn active" onclick="setSpreadMode('single')" title="Tek Sayfa">
+          📄 Tek
+        </button>
+        <button id="btn-spread-double" class="spread-mode-btn" onclick="setSpreadMode('double')" title="Çift Sayfa (Sağ-Sol)">
+          📖 Çift
+        </button>
+      </div>
+    </div>
+
+    <!-- Orta: Kuran Sağdan Sola Sayfa Geçiş Grubu (Solda Sonraki, Ortada Sayfa Seçici, Sağda Önceki) -->
+    <div class="quran-nav-group">
+      <button id="btn-sonraki" class="btn btn-primary btn-nav" onclick="handleNext()" title="Sonraki Sayfa (Sol)">
+        ← Sonraki
+      </button>
+
+      <div class="quran-nav-center">
+        <span id="sayfa-badge-top" class="sayfa-no-badge">Sayfa 1</span>
+        <span id="cuz-badge-top" class="cuz-badge">1. Cüz</span>
+        <input id="sayfa-git-input" class="sayfa-git-input" type="number"
+               min="1" max="605" placeholder="Git…" title="Sayfaya git (Enter)">
+      </div>
+
+      <button id="btn-onceki" class="btn btn-secondary btn-nav" onclick="handlePrev()" title="Önceki Sayfa (Sağ)">
+        Önceki →
+      </button>
+    </div>
+
+    <!-- Sağ: Yer İmi -->
+    <div>
+      <button id="btn-bm-sayfa" class="btn btn-sm btn-outline" onclick="togglePageBookmark()">🔖</button>
+    </div>
+  </div>
+
+  <!-- Ayet Listesi Bilgi Barı (yalnızca liste modunda) -->
+  <div class="sayfa-container" id="sayfa-info-wrap" style="padding-top:10px;padding-bottom:0">
+    <div class="sayfa-nav" id="sayfa-nav-bar">
+      <span id="sayfa-no-badge" class="sayfa-no-badge">Sayfa 1</span>
+      <span id="sayfa-sure-info" class="sayfa-sure-info"></span>
+    </div>
+  </div>
+
+  <!-- İçerik Alanı: Ayet Listesi -->
+  <div id="liste-wrap" class="sayfa-container">
+    <div id="sayfa-icerik" class="sayfa-icerik"></div>
+  </div>
+
+  <!-- İçerik Alanı: Orijinal PDF Mushaf -->
+  <div id="mushaf-wrap" class="mushaf-pdf-view hidden">
+    <div id="mushaf-icerik" style="width:100%"></div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div id="toast-container"></div>
+
+<script src="../js/data.js"></script>
+<script src="../js/page_map.js"></script>
+<script src="../js/shared.js"></script>
+<script src="../js/auth.js"></script>
+<script>
+'use strict';
+
+let currentPage = 1;
+let viewMode    = 'liste';            // 'liste' | 'mushaf'
+let spreadMode  = SpreadMode.get();    // 'single' | 'double'
+const TOTAL = 605;
+
+// ── Başlat ──
+function init() {
+  if (typeof QURAN_DATA === 'undefined' || typeof PAGE_MAP === 'undefined') {
+    $('loading').innerHTML =
+      '<p style="color:#fff;text-align:center;padding:24px">❌ Veri bulunamadı.<br>' +
+      'Lütfen <code>py process_quran.py</code> ve <code>py fetch_pages.py</code> çalıştırın.</p>';
+    return;
+  }
+
+  currentPage = parseInt(new URLSearchParams(location.search).get('p')) || LastPage.get();
+  if (currentPage < 1 || currentPage > TOTAL) currentPage = 1;
+
+  $('sayfa-git-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const v = parseInt(e.target.value);
+      if (v >= 1 && v <= TOTAL) goPage(v);
+      e.target.value = '';
+    }
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') handlePrev();
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   handleNext();
+  });
+
+  updateSpreadButtons();
+  renderPage(currentPage);
+
+  $('loading').classList.add('hidden');
+  $('app').classList.remove('hidden');
+}
+
+function handleNext() {
+  if (viewMode === 'mushaf' && spreadMode === 'double') {
+    const odd = (currentPage % 2 === 1) ? currentPage : currentPage - 1;
+    goPage(Math.min(TOTAL, odd + 2));
+  } else {
+    goPage(currentPage + 1);
+  }
+}
+
+function handlePrev() {
+  if (viewMode === 'mushaf' && spreadMode === 'double') {
+    const odd = (currentPage % 2 === 1) ? currentPage : currentPage - 1;
+    goPage(Math.max(1, odd - 2));
+  } else {
+    goPage(currentPage - 1);
+  }
+}
+
+// ── Mod Geçişi (Ayet Listesi / Orijinal Mushaf) ──
+function setMode(mode) {
+  viewMode = mode;
+  $('btn-mode-liste').classList.toggle('active', mode === 'liste');
+  $('btn-mode-mushaf').classList.toggle('active', mode === 'mushaf');
+  $('liste-wrap').classList.toggle('hidden', mode !== 'liste');
+  $('mushaf-wrap').classList.toggle('hidden', mode !== 'mushaf');
+  $('sayfa-info-wrap').classList.toggle('hidden', mode !== 'liste');
+  $('spread-switch-box').classList.toggle('hidden', mode !== 'mushaf');
+  renderPage(currentPage);
+}
+
+// ── Tek / Çift Sayfa Switch Kontrolü ──
+function setSpreadMode(mode) {
+  spreadMode = mode;
+  SpreadMode.set(mode);
+  updateSpreadButtons();
+  renderPage(currentPage);
+}
+
+function updateSpreadButtons() {
+  $('btn-spread-single').classList.toggle('active', spreadMode === 'single');
+  $('btn-spread-double').classList.toggle('active', spreadMode === 'double');
+}
+
+// ── Sayfa Render ──
+function renderPage(pageNo) {
+  if (pageNo < 1 || pageNo > TOTAL) return;
+  currentPage = pageNo;
+  LastPage.set(pageNo);
+  history.replaceState(null, '', `?p=${pageNo}`);
+
+  const mapKey = pageNo > 604 ? 604 : pageNo;
+  const ayahs  = PageHelper.ayahsForPage(mapKey);
+  const surahs = PageHelper.surahNamesForPage(mapKey);
+  const juzNo  = PageHelper.pageToJuz(pageNo);
+
+  // Header güncelle
+  const surahTitle = surahs.length ? surahs.map(s => s.tr).join(' — ') : 'Kur\'an-ı Kerim';
+  $('bar-title').textContent = surahTitle;
+  $('bar-cuz').textContent   = `${juzNo}. Cüz`;
+  
+  $('sayfa-badge-top').textContent = `Sayfa ${pageNo}`;
+  $('cuz-badge-top').textContent   = `${juzNo}. Cüz`;
+  updateBmBtn();
+
+  $('btn-onceki').disabled = (pageNo === 1);
+  $('btn-sonraki').disabled = (pageNo === TOTAL);
+
+  if (viewMode === 'liste') {
+    renderListeMode(ayahs, pageNo, surahs);
+  } else {
+    renderMushafPdfMode(pageNo, juzNo, surahs);
+  }
+}
+
+function goPage(n) {
+  if (n < 1 || n > TOTAL) return;
+  renderPage(n);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ─────────────────────────────────────────────────
+//  1. AYET LİSTESİ MODU (Besmele Tekrarsız)
+// ─────────────────────────────────────────────────
+function renderListeMode(ayahs, pageNo, surahs) {
+  $('sayfa-no-badge').textContent  = `Sayfa ${pageNo}`;
+  $('sayfa-sure-info').textContent = surahs.map(s => `${s.no}. ${s.tr} (${s.ar})`).join(' • ');
+
+  const container = $('sayfa-icerik');
+  container.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  let lastSurahNo = null;
+
+  ayahs.forEach(ayah => {
+    if (ayah.surahNo !== lastSurahNo) {
+      lastSurahNo = ayah.surahNo;
+      const hdr = document.createElement('div');
+      hdr.className = 'sure-baslik-satir';
+      hdr.innerHTML = `
+        <div class="sure-baslik-ar">${ayah.surahAr}</div>
+        <div class="sure-baslik-tr">${ayah.surahNo}. Sure — ${ayah.surahTr}</div>
+      `;
+      frag.appendChild(hdr);
+
+      // Sure başlığı altında tek Besmele (Fatiha ve Tevbe hariç)
+      if (ayah.surahNo !== 1 && ayah.surahNo !== 9 && ayah.ayahNo === 1) {
+        const bsm = document.createElement('div');
+        bsm.className = 'besmele';
+        bsm.textContent = 'بِسۡمِ ٱللَّهِ ٱلرَّحۡمَـٰنِ ٱلرَّحِيمِ';
+        frag.appendChild(bsm);
+      }
+    }
+
+    const isEzber = Memorized.has(ayah.surahNo, ayah.ayahNo);
+    const isBm    = Bookmarks.hasAyah(ayah.surahNo, ayah.ayahNo);
+    const row = document.createElement('div');
+    row.className = 'ayet-row' + (isEzber ? ' ezber' : '') + (isBm ? ' bookmarked' : '');
+    row.dataset.s = ayah.surahNo; row.dataset.a = ayah.ayahNo;
+    row.innerHTML = `
+      <div class="ayet-actions">
+        <button class="ayet-cb-btn" title="Ezberlendi">✓</button>
+        <button class="ayet-bm-btn" title="Yer imi">🔖</button>
+      </div>
+      <div class="ayet-no-circle">${ayah.ayahNo}</div>
+      <div class="ayet-text-ar">${getCleanAyahText(ayah)}</div>
+    `;
+    row.querySelector('.ayet-cb-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      const s = +row.dataset.s, a = +row.dataset.a;
+      const now = Memorized.toggle(s, a);
+      row.classList.toggle('ezber', now);
+      showToast(now ? '✓ Ezberlendi' : '✗ İşaret kaldırıldı', now ? 'success' : '');
+    });
+    row.querySelector('.ayet-bm-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      const s = +row.dataset.s, a = +row.dataset.a;
+      if (Bookmarks.hasAyah(s, a)) {
+        Bookmarks.remove('ayah', `${s}:${a}`);
+        row.classList.remove('bookmarked');
+        showToast('Yer imi kaldırıldı');
+      } else {
+        Bookmarks.addAyah(s, a, `${ayah.surahTr} ${a}. Ayet`);
+        row.classList.add('bookmarked');
+        showToast('🔖 Yer imine eklendi', 'success');
+      }
+    });
+    frag.appendChild(row);
+  });
+
+  container.appendChild(frag);
+  container.scrollTop = 0;
+}
+
+// ─────────────────────────────────────────────────
+//  2. ORİJİNAL MUSHAF MODU (Tek / Çift Sayfa)
+// ─────────────────────────────────────────────────
+function renderMushafPdfMode(pageNo, juzNo, surahs) {
+  const container = $('mushaf-icerik');
+  container.innerHTML = '';
+
+  if (spreadMode === 'single') {
+    // Tek Sayfa Görünümü
+    container.innerHTML = `
+      <div class="mushaf-single-wrap">
+        <div class="mushaf-img-frame">
+          <img src="../mushaf_pages/page_${pageNo}.webp" alt="Mushaf Sayfa ${pageNo}" loading="eager">
+          <div class="mushaf-img-badge">Sayfa ${pageNo}</div>
+        </div>
+      </div>
+    `;
+  } else {
+    // Çift Sayfa (Mushaf Kitap Dizilişi):
+    // Sağ Sayfa: Tek Sayı (Örn. 1 - Fatiha)
+    // Sol Sayfa: Çift Sayı (Örn. 2 - Elif Lam Mim)
+    let rightPage, leftPage;
+    if (pageNo % 2 === 1) {
+      rightPage = pageNo;
+      leftPage = (pageNo + 1 <= TOTAL) ? pageNo + 1 : null;
+    } else {
+      rightPage = pageNo - 1;
+      leftPage = pageNo;
+    }
+
+    const leftColHtml = leftPage ? `
+      <div class="mushaf-page-col col-left">
+        <img src="../mushaf_pages/page_${leftPage}.webp" alt="Mushaf Sayfa ${leftPage}" loading="eager">
+        <div class="page-foot-info">Sayfa ${leftPage}</div>
+      </div>
+    ` : `
+      <div class="mushaf-page-col col-left empty-page">
+        <div>Hatim Duası / Son</div>
+      </div>
+    `;
+
+    const rightColHtml = `
+      <div class="mushaf-page-col col-right">
+        <img src="../mushaf_pages/page_${rightPage}.webp" alt="Mushaf Sayfa ${rightPage}" loading="eager">
+        <div class="page-foot-info">Sayfa ${rightPage}</div>
+      </div>
+    `;
+
+    container.innerHTML = `
+      <div class="mushaf-double-wrap">
+        <div class="mushaf-book-spread">
+          ${leftColHtml}
+          <div class="mushaf-spine"></div>
+          ${rightColHtml}
+        </div>
+      </div>
+    `;
+  }
+}
+
+// ── Yer İmi (sayfa) ──
+function togglePageBookmark() {
+  if (Bookmarks.hasPage(currentPage)) {
+    Bookmarks.remove('page', currentPage);
+    showToast('Sayfa yer imi kaldırıldı');
+  } else {
+    const mapKey = currentPage > 604 ? 604 : currentPage;
+    const surahs = PageHelper.surahNamesForPage(mapKey);
+    Bookmarks.addPage(currentPage, `Sayfa ${currentPage} — ${surahs.map(s => s.tr).join(', ')}`);
+    showToast('🔖 Sayfa yer imine eklendi', 'success');
+  }
+  updateBmBtn();
+}
+
+function updateBmBtn() {
+  const btn = $('btn-bm-sayfa');
+  const has = Bookmarks.hasPage(currentPage);
+  btn.textContent = has ? '🔖 İşaretli' : '🔖';
+  btn.className   = has ? 'btn btn-sm btn-gold' : 'btn btn-sm btn-outline';
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

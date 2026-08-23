@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Huffaz — Kuran Hafızlık & Okuma</title>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+
+<div id="loading" class="page-loading">
+  <div class="spinner"></div>
+  <p>Yükleniyor…</p>
+</div>
+
+<div id="app" class="hidden">
+
+  <!-- App Bar -->
+  <header class="app-bar">
+    <span class="app-bar-title" style="margin-left:4px">☪ Huffaz</span>
+    <span class="app-bar-sub">Hafızlık Takip</span>
+  </header>
+
+  <!-- ── Hero ── -->
+  <section class="home-hero">
+    <div class="home-hero-icon">☽</div>
+    <h1>Huffaz</h1>
+    <p class="home-hero-sub">Kur'an-ı Kerim Hafızlık Takip &amp; Okuma Uygulaması</p>
+
+    <div class="home-hero-stats">
+      <div class="hero-stat">
+        <div class="hero-stat-val" id="stat-memorized">0</div>
+        <div class="hero-stat-label">Ayet Ezberlendi</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-val" id="stat-surahs">0</div>
+        <div class="hero-stat-label">Sure Tamamlandı</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-val" id="stat-bookmarks">0</div>
+        <div class="hero-stat-label">Yer İmi</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-val" id="stat-last-page">—</div>
+        <div class="hero-stat-label">Son Okunan Sayfa</div>
+      </div>
+    </div>
+
+    <div class="hero-overall-prog">
+      <div class="prog-bar-wrap" style="height:10px">
+        <div id="hero-prog-fill" class="prog-bar-fill" style="background:var(--gold-400);width:0"></div>
+      </div>
+      <p id="hero-prog-text" class="hero-prog-text">6.236 ayetten 0 tanesi ezberlendi (%0)</p>
+    </div>
+  </section>
+
+  <!-- ── Bölüm Kartları ── -->
+  <div class="home-grid">
+
+    <!-- Sureler -->
+    <a href="pages/sureler.html" class="home-card">
+      <div class="card-icon-wrap card-icon-green">📚</div>
+      <div>
+        <div class="card-title">Sureler</div>
+        <div class="card-desc">
+          114 sure — ayet bazında ezberleme takibi ve hafızlık testi yapın
+        </div>
+      </div>
+      <div class="card-meta">
+        <span id="card-sure-badge" class="badge badge-green">0 sure</span>
+        <span class="card-arrow">→</span>
+      </div>
+    </a>
+
+    <!-- Sayfalar -->
+    <a href="pages/sayfalar.html" class="home-card">
+      <div class="card-icon-wrap card-icon-gold">📄</div>
+      <div>
+        <div class="card-title">Sayfalar</div>
+        <div class="card-desc">
+          604 sayfa — Osmanlı mushaf dizilişiyle sayfa sayfa okuyun
+        </div>
+      </div>
+      <div class="card-meta">
+        <span class="badge badge-gold">604 Sayfa</span>
+        <span class="card-arrow">→</span>
+      </div>
+    </a>
+
+    <!-- Cüzler -->
+    <a href="pages/cuzler.html" class="home-card">
+      <div class="card-icon-wrap card-icon-blue">🔖</div>
+      <div>
+        <div class="card-title">Cüzler</div>
+        <div class="card-desc">
+          30 cüz — her cüz 20 sayfa, son cüz 581–604. Cüz bazında okuyun
+        </div>
+      </div>
+      <div class="card-meta">
+        <span class="badge badge-gray">30 Cüz</span>
+        <span class="card-arrow">→</span>
+      </div>
+    </a>
+
+    <!-- Yer İmleri -->
+    <a href="pages/yerimleri.html" class="home-card">
+      <div class="card-icon-wrap card-icon-rose">🔖</div>
+      <div>
+        <div class="card-title">Yer İmleri</div>
+        <div class="card-desc">
+          Kaydettiğiniz ayet ve sayfa yer imlerinize hızlıca erişin
+        </div>
+      </div>
+      <div class="card-meta">
+        <span id="card-bm-badge" class="badge badge-gray">0 yer imi</span>
+        <span class="card-arrow">→</span>
+      </div>
+    </a>
+
+    <!-- Kaldığın Yerden Oku -->
+    <a href="pages/oku.html" class="home-card">
+      <div class="card-icon-wrap card-icon-teal">📖</div>
+      <div>
+        <div class="card-title">Kaldığın Yerden Oku</div>
+        <div class="card-desc">
+          Son okuduğunuz sayfadan devam edin — konumunuz otomatik kaydedilir
+        </div>
+      </div>
+      <div class="card-meta">
+        <span id="card-last-page" class="badge badge-green">Sayfa 1</span>
+        <span class="card-arrow">→</span>
+      </div>
+    </a>
+
+    <!-- Dinle -->
+    <a href="pages/dinle.html" class="home-card">
+      <div class="card-icon-wrap card-icon-purple">🎧</div>
+      <div>
+        <div class="card-title">Dinle</div>
+        <div class="card-desc">
+          Mishary Alafasy, Fatih Seferagic ve farklı okuyucularla sayfa veya sure bazında Kur'an dinleyin
+        </div>
+      </div>
+      <div class="card-meta">
+        <span class="badge badge-green">🎧 Dinle</span>
+        <span class="card-arrow">→</span>
+      </div>
+    </a>
+
+    <!-- Test (Hafızlık Testi) -->
+    <a href="pages/test.html" class="home-card">
+      <div class="card-icon-wrap card-icon-gold">🎯</div>
+      <div>
+        <div class="card-title">Test</div>
+        <div class="card-desc">
+          Ezberlediğiniz ayetler üzerinden hafızlık testi yapın — ayet sıralama ve tamamlama
+        </div>
+      </div>
+      <div class="card-meta">
+        <span class="badge badge-green">🎯 Hafızlık Testi</span>
+        <span class="card-arrow">→</span>
+      </div>
+    </a>
+
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast-container"></div>
+
+<script src="js/data.js"></script>
+<script src="js/shared.js"></script>
+<script src="js/auth.js"></script>
+<script>
+  'use strict';
+
+  function init() {
+    // İstatistikler
+    const totalAyahs = QURAN_DATA.length; // 6236
+    const memCount   = Memorized.count();
+    const bmCount    = Bookmarks.count();
+    const lastPage   = LastPage.get();
+    const pct        = Math.round((memCount / totalAyahs) * 100);
+
+    // Sure tamamlama sayısı
+    let surahMap = new Map();
+    QURAN_DATA.forEach(a => {
+      if (!surahMap.has(a.surahNo)) surahMap.set(a.surahNo, { total: 0, mem: 0 });
+      surahMap.get(a.surahNo).total++;
+      if (Memorized.has(a.surahNo, a.ayahNo)) surahMap.get(a.surahNo).mem++;
+    });
+    let tamSure = 0;
+    surahMap.forEach(v => { if (v.mem === v.total) tamSure++; });
+
+    // Hero stats
+    document.getElementById('stat-memorized').textContent  = memCount.toLocaleString('tr-TR');
+    document.getElementById('stat-surahs').textContent     = tamSure;
+    document.getElementById('stat-bookmarks').textContent  = bmCount;
+    document.getElementById('stat-last-page').textContent  = lastPage;
+    document.getElementById('hero-prog-fill').style.width  = pct + '%';
+    document.getElementById('hero-prog-text').textContent  =
+      `6.236 ayetten ${memCount.toLocaleString('tr-TR')} tanesi ezberlendi (%${pct})`;
+
+    // Kart rozetleri
+    document.getElementById('card-sure-badge').textContent  = `${tamSure} sure`;
+    document.getElementById('card-bm-badge').textContent    = `${bmCount} yer imi`;
+    document.getElementById('card-last-page').textContent   = `Sayfa ${lastPage}`;
+
+    // Göster
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

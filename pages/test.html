@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <title>Hafızlık Testi — Huffaz</title>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/main.css">
+  <style>
+    .q-blank-word {
+      display: inline-block;
+      background: #fef3c7;
+      color: #92400e;
+      border: 2px dashed #f59e0b;
+      border-radius: 6px;
+      padding: 0 14px;
+      margin: 0 4px;
+      font-weight: 800;
+      font-family: inherit;
+    }
+    .q-revealed-word {
+      display: inline-block;
+      background: #dcfce7;
+      color: #14532d;
+      border: 2px solid #22c55e;
+      border-radius: 6px;
+      padding: 0 14px;
+      margin: 0 4px;
+      font-weight: 800;
+      font-family: inherit;
+      animation: pulse 1s ease;
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading" class="page-loading">
+  <div class="spinner"></div>
+  <p>Test hazırlanıyor…</p>
+</div>
+
+<div id="app" class="hidden">
+
+  <!-- Header -->
+  <header class="app-bar">
+    <div class="app-bar-nav-btns">
+      <button class="app-bar-btn" onclick="location.href='../index.html'">← Ana Sayfa</button>
+      <button class="app-bar-btn" onclick="history.back()">← Geri</button>
+    </div>
+    <span class="app-bar-title" id="bar-title" style="margin-left:8px">🎯 Hafızlık Testi</span>
+    <span class="app-bar-sub" id="mem-stat-badge">0 Ayet Ezberde</span>
+  </header>
+
+  <main class="test-container">
+
+    <!-- ══ 1. KURULUM EKRANI ══ -->
+    <div id="test-setup" class="test-screen">
+      <div class="setup-card">
+        <div class="setup-emoji">📖</div>
+        <h2 id="setup-title">Hafızlık Testi</h2>
+        <p id="setup-desc" class="setup-desc">
+          Ezberlediğiniz ayetler üzerinden test yapılır.
+        </p>
+
+        <div class="setup-row">
+          <label for="test-turu">Test Türü:</label>
+          <select id="test-turu" class="select-field" onchange="updateSetupView()">
+            <option value="ardisik" selected>Ardışık Ayet Tamamlama</option>
+            <option value="kelime">Ayet İçi Kelime Bulma (Boşluk Doldurma)</option>
+          </select>
+        </div>
+
+        <div class="setup-row">
+          <label for="soru-sayisi">Soru Sayısı:</label>
+          <select id="soru-sayisi" class="select-field">
+            <option value="10">10 Soru</option>
+            <option value="20" selected>20 Soru</option>
+            <option value="30">30 Soru</option>
+            <option value="50">50 Soru</option>
+            <option value="0">Tümü</option>
+          </select>
+        </div>
+
+        <div class="setup-row" id="kapsam-row">
+          <label for="test-kapsami">Test Kapsamı:</label>
+          <select id="test-kapsami" class="select-field" onchange="updateSetupView()">
+            <option value="ezber" selected>Yalnızca Ezberlenen Ayetler</option>
+            <option value="tumu">Tüm Kur'an-ı Kerim</option>
+          </select>
+        </div>
+
+        <button id="btn-test-basla" class="btn btn-primary btn-lg" style="width:100%;max-width:280px;margin:0 auto;padding:12px 24px;font-size:1rem;">
+          ▶ Testi Başlat
+        </button>
+      </div>
+    </div>
+
+    <!-- ══ 2. SORU EKRANI ══ -->
+    <div id="test-quiz" class="test-screen hidden">
+      <div class="quiz-header-area">
+        <div class="quiz-prog-bar-wrap">
+          <div id="quiz-fill" class="quiz-prog-fill" style="width: 0%;"></div>
+        </div>
+        <div class="quiz-meta">
+          <span id="quiz-no">Soru 1 / 20</span>
+          <span id="quiz-puan">Puan: 0 / 0</span>
+        </div>
+      </div>
+
+      <div class="question-card">
+        <p class="q-label" id="q-label-text">Bu ayetten sonra hangi ayet gelir?</p>
+        <p id="q-sure-info" class="q-sure-info"></p>
+        <div id="q-text" class="q-text" dir="rtl"></div>
+      </div>
+
+      <div id="options-area" class="options-area"></div>
+      <div id="feedback-area" class="feedback-area hidden"></div>
+
+      <div class="quiz-footer">
+        <button id="btn-sonraki" class="btn btn-primary hidden" style="padding:10px 24px;font-size:.95rem;">Sonraki Soru →</button>
+      </div>
+    </div>
+
+    <!-- ══ 3. SONUÇ EKRANI ══ -->
+    <div id="test-sonuc" class="test-screen hidden">
+      <div class="sonuc-card">
+        <div id="sonuc-emoji" class="sonuc-emoji">🏆</div>
+        <h2 id="sonuc-baslik">Tebrikler!</h2>
+        <div id="sonuc-skor" class="sonuc-skor">20 / 20</div>
+        <div id="sonuc-pct" class="sonuc-pct">%100 Başarı</div>
+        <p id="sonuc-mesaj" class="sonuc-mesaj"></p>
+        <div class="sonuc-btns">
+          <button id="btn-tekrar" class="btn btn-primary">🔄 Tekrar Test Yap</button>
+          <a href="sureler.html" class="btn btn-secondary">📚 Surelere Git</a>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Toast -->
+<div id="toast-container"></div>
+
+<script src="../js/data.js"></script>
+<script src="../js/page_map.js"></script>
+<script src="../js/shared.js"></script>
+<script src="../js/auth.js"></script>
+<script>
+'use strict';
+
+let ayahIndex = new Map();
+let quizState = null;
+let targetSurahNo = null;
+
+function init() {
+  if (typeof QURAN_DATA === 'undefined' || !QURAN_DATA.length) {
+    $('loading').innerHTML = '<p style="color:#fff;padding:24px;text-align:center">❌ Veri yüklenemedi.</p>';
+    return;
+  }
+
+  // Ayet indexi oluştur
+  QURAN_DATA.forEach((ayah, idx) => {
+    ayahIndex.set(`${ayah.surahNo}:${ayah.ayahNo}`, idx);
+  });
+
+  const params = new URLSearchParams(location.search);
+  const sParam = params.get('surah');
+  if (sParam) {
+    targetSurahNo = parseInt(sParam);
+  }
+
+  bindEvents();
+  updateSetupView();
+
+  $('loading').classList.add('hidden');
+  $('app').classList.remove('hidden');
+}
+
+function updateSetupView() {
+  const memCount = Memorized.count();
+  $('mem-stat-badge').textContent = `${memCount} Ayet Ezberde`;
+
+  const descEl = $('setup-desc');
+  const btnBasla = $('btn-test-basla');
+  const testTuru = $('test-turu') ? $('test-turu').value : 'ardisik';
+
+  if (targetSurahNo) {
+    // Özel Sure Testi
+    const surahAyahs = QURAN_DATA.filter(a => a.surahNo === targetSurahNo);
+    const surahName = surahAyahs.length ? surahAyahs[0].surahTr : `${targetSurahNo}. Sure`;
+    $('setup-title').textContent = `${targetSurahNo}. ${surahName} Suresi Testi`;
+    $('bar-title').textContent = `🎯 ${surahName} Testi`;
+    $('kapsam-row').classList.add('hidden');
+
+    const questions = buildQuizQuestions(0, 'surah', testTuru);
+    if (questions.length === 0) {
+      descEl.textContent = `${surahName} suresinde yeterli soru üretilemedi.`;
+      btnBasla.disabled = true;
+    } else {
+      const typeText = (testTuru === 'kelime') ? 'ayet içi kelime bulma' : 'ardışık ayet tamamlama';
+      descEl.textContent = `${surahName} Suresi (${surahAyahs.length} ayet) üzerinden ${typeText} testi.`;
+      btnBasla.disabled = false;
+    }
+  } else {
+    // Genel Test
+    const kapsam = $('test-kapsami').value;
+    const questions = buildQuizQuestions(0, kapsam, testTuru);
+
+    if (kapsam === 'ezber') {
+      if (memCount === 0) {
+        descEl.innerHTML = '⚠️ Henüz hiç ayet ezberlemediniz. İsterseniz <b>Tüm Kur\'an-ı Kerim</b> üzerinden test yapabilir veya <a href="sureler.html" style="color:var(--green-700);text-decoration:underline;">Sureler</a> bölümünden ezberlediklerinizi işaretleyebilirsiniz.';
+        btnBasla.disabled = true;
+      } else if (questions.length === 0) {
+        descEl.textContent = (testTuru === 'kelime')
+          ? `ℹ️ Ezberlenen ayetler içerisinde uygun kelime sorusu bulunamadı.`
+          : `ℹ️ ${memCount} ayet ezberlendi, ancak ardışık test için arka arkaya gelen en az 2 ayet gerekiyor.`;
+        btnBasla.disabled = true;
+      } else {
+        const typeText = (testTuru === 'kelime') ? 'kelime bulma sorusu' : 'ardışık ayet sorusu';
+        descEl.textContent = `Ezberlediğiniz ${memCount} ayet üzerinden ${questions.length} farklı ${typeText} üretilebilir.`;
+        btnBasla.disabled = false;
+      }
+    } else {
+      const typeText = (testTuru === 'kelime') ? 'kelime bulma soruları' : 'ardışık ayet soruları';
+      descEl.textContent = `Tüm Kur'an-ı Kerim (${QURAN_DATA.length} ayet) üzerinden ${typeText} üretilecek.`;
+      btnBasla.disabled = false;
+    }
+  }
+}
+
+function bindEvents() {
+  $('btn-test-basla').addEventListener('click', startTest);
+  $('btn-sonraki').addEventListener('click', nextQuestion);
+  $('btn-tekrar').addEventListener('click', () => {
+    showScreen('setup');
+    updateSetupView();
+  });
+}
+
+function showScreen(screen) {
+  $('test-setup').classList.toggle('hidden', screen !== 'setup');
+  $('test-quiz').classList.toggle('hidden', screen !== 'quiz');
+  $('test-sonuc').classList.toggle('hidden', screen !== 'sonuc');
+}
+
+// ── Soru Üretici (Ardışık Ayet ve Kelime Bulma) ──
+function buildQuizQuestions(limit = 0, kapsam = 'ezber', type = 'ardisik') {
+  const useAll = (kapsam === 'tumu');
+  const isSurahMode = (kapsam === 'surah' || targetSurahNo !== null);
+
+  if (type === 'kelime') {
+    // Kelime Bulma / Boşluk Doldurma Modu
+    const questions = [];
+    const pool = QURAN_DATA.filter(a => {
+      if (isSurahMode) return a.surahNo === targetSurahNo;
+      return useAll || Memorized.has(a.surahNo, a.ayahNo);
+    });
+
+    pool.forEach(ayah => {
+      const cleanText = getCleanAyahText(ayah);
+      const words = cleanText.split(/\s+/).filter(w => w.length >= 2);
+      if (words.length < 3) return;
+
+      // Uygun kelimeler (uzunluğu >= 3 olanlar)
+      const validIndices = [];
+      words.forEach((w, idx) => {
+        if (w.length >= 3) validIndices.push(idx);
+      });
+      if (!validIndices.length) return;
+
+      const targetIdx = validIndices[Math.floor(Math.random() * validIndices.length)];
+      const targetWord = words[targetIdx];
+
+      // Boşluklu metin
+      const promptWords = [...words];
+      promptWords[targetIdx] = '<span class="q-blank-word" id="blank-target">[ &nbsp;?&nbsp; ]</span>';
+
+      // Tamamlanmış metin
+      const fullWords = [...words];
+      fullWords[targetIdx] = `<span class="q-revealed-word">${targetWord}</span>`;
+
+      questions.push({
+        type: 'kelime',
+        promptAyah: ayah,
+        promptHtml: promptWords.join(' '),
+        fullHtml: fullWords.join(' '),
+        correctWord: targetWord,
+        wordIndex: targetIdx
+      });
+    });
+
+    // Karıştır (Fisher-Yates)
+    for (let i = questions.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [questions[i], questions[j]] = [questions[j], questions[i]];
+    }
+
+    return limit > 0 ? questions.slice(0, limit) : questions;
+
+  } else {
+    // Ardışık Ayet Tamamlama Modu
+    const pairs = [];
+    for (let i = 0; i < QURAN_DATA.length - 1; i++) {
+      const a1 = QURAN_DATA[i];
+      const a2 = QURAN_DATA[i + 1];
+      if (a1.surahNo === a2.surahNo && a2.ayahNo === a1.ayahNo + 1) {
+        if (isSurahMode) {
+          if (a1.surahNo === targetSurahNo) {
+            pairs.push({ type: 'ardisik', prompt: a1, correct: a2 });
+          }
+        } else if (useAll || (Memorized.has(a1.surahNo, a1.ayahNo) && Memorized.has(a2.surahNo, a2.ayahNo))) {
+          pairs.push({ type: 'ardisik', prompt: a1, correct: a2 });
+        }
+      }
+    }
+
+    for (let i = pairs.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pairs[i], pairs[j]] = [pairs[j], pairs[i]];
+    }
+
+    return limit > 0 ? pairs.slice(0, limit) : pairs;
+  }
+}
+
+// ── Ardışık Ayet Çeldiricileri (Soru Ayeti Asla Şıklarda Yer Almaz) ──
+function getDistractors(promptAyah, correctAyah, count = 3) {
+  const sameSurah = QURAN_DATA.filter(a =>
+    a.surahNo === correctAyah.surahNo &&
+    a.ayahNo !== correctAyah.ayahNo &&
+    !(a.surahNo === promptAyah.surahNo && a.ayahNo === promptAyah.ayahNo)
+  );
+  const distractors = [];
+  const used = new Set([
+    `${promptAyah.surahNo}:${promptAyah.ayahNo}`,
+    `${correctAyah.surahNo}:${correctAyah.ayahNo}`
+  ]);
+
+  // Aynı sureden şıklar
+  const shuffledSame = [...sameSurah].sort(() => Math.random() - .5);
+  for (const a of shuffledSame) {
+    if (distractors.length >= count) break;
+    distractors.push(a);
+    used.add(`${a.surahNo}:${a.ayahNo}`);
+  }
+
+  // Yetersizse diğer surelerden rastgele
+  while (distractors.length < count) {
+    const rnd = QURAN_DATA[Math.floor(Math.random() * QURAN_DATA.length)];
+    const key = `${rnd.surahNo}:${rnd.ayahNo}`;
+    if (!used.has(key)) {
+      distractors.push(rnd);
+      used.add(key);
+    }
+  }
+
+  return distractors;
+}
+
+// ── Kelime Bulma Çeldiricileri ──
+function getWordDistractors(correctWord, promptAyah, count = 3) {
+  const distractors = [];
+  const used = new Set([correctWord]);
+
+  // Aynı suredeki diğer kelimeler
+  const sameSurahAyahs = QURAN_DATA.filter(a => a.surahNo === promptAyah.surahNo && a.ayahNo !== promptAyah.ayahNo);
+  const candidateWords = [];
+  sameSurahAyahs.forEach(a => {
+    getCleanAyahText(a).split(/\s+/).forEach(w => {
+      if (w.length >= 3 && !used.has(w)) candidateWords.push(w);
+    });
+  });
+
+  candidateWords.sort(() => Math.random() - .5);
+  for (const w of candidateWords) {
+    if (distractors.length >= count) break;
+    distractors.push(w);
+    used.add(w);
+  }
+
+  // Yetersizse rastgele ayet kelimeleri
+  while (distractors.length < count) {
+    const rndAyah = QURAN_DATA[Math.floor(Math.random() * QURAN_DATA.length)];
+    const words = getCleanAyahText(rndAyah).split(/\s+/).filter(w => w.length >= 3);
+    if (words.length) {
+      const w = words[Math.floor(Math.random() * words.length)];
+      if (!used.has(w)) {
+        distractors.push(w);
+        used.add(w);
+      }
+    }
+  }
+
+  return distractors;
+}
+
+function startTest() {
+  const limit = parseInt($('soru-sayisi').value) || 0;
+  const kapsam = targetSurahNo ? 'surah' : $('test-kapsami').value;
+  const testTuru = $('test-turu') ? $('test-turu').value : 'ardisik';
+  const questions = buildQuizQuestions(limit, kapsam, testTuru);
+
+  if (questions.length === 0) {
+    showToast('Test için yeterli soru bulunamadı');
+    return;
+  }
+
+  quizState = {
+    questions,
+    currentIdx: 0,
+    score: 0,
+    answered: false
+  };
+
+  showScreen('quiz');
+  renderCurrentQuestion();
+}
+
+function renderCurrentQuestion() {
+  const q = quizState.questions[quizState.currentIdx];
+  quizState.answered = false;
+
+  const total = quizState.questions.length;
+  const curr = quizState.currentIdx + 1;
+
+  $('quiz-no').textContent = `Soru ${curr} / ${total}`;
+  $('quiz-puan').textContent = `Puan: ${quizState.score} / ${curr - 1}`;
+  $('quiz-fill').style.width = `${((curr - 1) / total) * 100}%`;
+
+  const optArea = $('options-area');
+  optArea.innerHTML = '';
+
+  if (q.type === 'kelime') {
+    // Kelime Bulma Sorusu
+    $('q-label-text').textContent = 'Ayet içerisindeki boşluğa hangi kelime gelmelidir?';
+    $('q-sure-info').innerHTML = `${q.promptAyah.surahNo}. ${q.promptAyah.surahTr} Suresi<span id="prompt-ayah-ref" style="display:none">, ${q.promptAyah.ayahNo}. Ayet</span>:`;
+    $('q-text').innerHTML = q.promptHtml;
+
+    const distractors = getWordDistractors(q.correctWord, q.promptAyah, 3);
+    const options = [q.correctWord, ...distractors].sort(() => Math.random() - .5);
+
+    options.forEach(word => {
+      const btn = document.createElement('button');
+      btn.className = 'option-btn';
+      btn.innerHTML = `<span style="flex:1;text-align:center;font-size:1.4rem">${word}</span>`;
+      btn.addEventListener('click', () => handleWordAnswer(word, q.correctWord, btn, q));
+      optArea.appendChild(btn);
+    });
+
+  } else {
+    // Ardışık Ayet Sorusu
+    $('q-label-text').textContent = 'Bu ayetten sonra hangi ayet gelir?';
+    $('q-sure-info').innerHTML = `${q.prompt.surahNo}. ${q.prompt.surahTr} Suresi<span id="prompt-ayah-ref" style="display:none">, ${q.prompt.ayahNo}. Ayet</span>:`;
+    $('q-text').textContent = getCleanAyahText(q.prompt);
+
+    const distractors = getDistractors(q.prompt, q.correct, 3);
+    const options = [q.correct, ...distractors].sort(() => Math.random() - .5);
+
+    options.forEach(opt => {
+      const btn = document.createElement('button');
+      btn.className = 'option-btn';
+      btn.innerHTML = `
+        <span style="flex:1">${getCleanAyahText(opt)}</span>
+        <span class="opt-ref" style="font-size:.75rem;color:var(--gray-400);margin-right:10px;font-family:var(--font-ui);white-space:nowrap;display:none;">${opt.surahTr} ${opt.ayahNo}</span>
+      `;
+      btn.addEventListener('click', () => handleAnswer(opt, q.correct, btn));
+      optArea.appendChild(btn);
+    });
+  }
+
+  $('feedback-area').className = 'feedback-area hidden';
+  $('feedback-area').textContent = '';
+  $('btn-sonraki').classList.add('hidden');
+}
+
+function handleAnswer(selected, correct, selectedBtn) {
+  if (quizState.answered) return;
+  quizState.answered = true;
+
+  const isCorrect = (selected.surahNo === correct.surahNo && selected.ayahNo === correct.ayahNo);
+  if (isCorrect) quizState.score++;
+
+  const promptRef = $('prompt-ayah-ref');
+  if (promptRef) promptRef.style.display = 'inline';
+
+  $$('.opt-ref').forEach(span => {
+    span.style.display = 'inline';
+  });
+
+  $$('.option-btn').forEach(btn => {
+    btn.disabled = true;
+    if (btn.textContent.includes(getCleanAyahText(correct))) {
+      btn.classList.add('correct');
+    }
+  });
+
+  if (!isCorrect) {
+    selectedBtn.classList.add('wrong');
+  }
+
+  const fb = $('feedback-area');
+  fb.classList.remove('hidden');
+  fb.className = 'feedback-area ' + (isCorrect ? 'correct' : 'wrong');
+  fb.textContent = isCorrect ? '✓ Doğru cevap! MaşaAllah.' : `✗ Yanlış. Doğru ayet: ${correct.surahTr} ${correct.ayahNo}. ayet`;
+
+  const isLast = (quizState.currentIdx + 1 >= quizState.questions.length);
+  const nextBtn = $('btn-sonraki');
+  nextBtn.textContent = isLast ? 'Sonuçları Gör 🏆' : 'Sonraki Soru →';
+  nextBtn.classList.remove('hidden');
+}
+
+function handleWordAnswer(selectedWord, correctWord, selectedBtn, q) {
+  if (quizState.answered) return;
+  quizState.answered = true;
+
+  const isCorrect = (selectedWord === correctWord);
+  if (isCorrect) quizState.score++;
+
+  // Soru metnindeki boşluğu doğru kelimeyle aydınlat
+  $('q-text').innerHTML = q.fullHtml;
+  const promptRef = $('prompt-ayah-ref');
+  if (promptRef) promptRef.style.display = 'inline';
+
+  $$('.option-btn').forEach(btn => {
+    btn.disabled = true;
+    if (btn.textContent.trim() === correctWord) {
+      btn.classList.add('correct');
+    }
+  });
+
+  if (!isCorrect) {
+    selectedBtn.classList.add('wrong');
+  }
+
+  const fb = $('feedback-area');
+  fb.classList.remove('hidden');
+  fb.className = 'feedback-area ' + (isCorrect ? 'correct' : 'wrong');
+  fb.textContent = isCorrect ? '✓ Doğru kelime! Tebrikler.' : `✗ Yanlış. Doğru kelime: "${correctWord}" (${q.promptAyah.surahTr} ${q.promptAyah.ayahNo}. ayet)`;
+
+  const isLast = (quizState.currentIdx + 1 >= quizState.questions.length);
+  const nextBtn = $('btn-sonraki');
+  nextBtn.textContent = isLast ? 'Sonuçları Gör 🏆' : 'Sonraki Soru →';
+  nextBtn.classList.remove('hidden');
+}
+
+function nextQuestion() {
+  quizState.currentIdx++;
+  if (quizState.currentIdx < quizState.questions.length) {
+    renderCurrentQuestion();
+  } else {
+    showResults();
+  }
+}
+
+function showResults() {
+  showScreen('sonuc');
+  const total = quizState.questions.length;
+  const score = quizState.score;
+  const pct = Math.round((score / total) * 100);
+
+  $('sonuc-skor').textContent = `${score} / ${total}`;
+  $('sonuc-pct').textContent = `%${pct} Başarı`;
+
+  let emoji = '🏆', msg = '';
+  if (pct === 100) {
+    emoji = '🌟'; msg = 'Kusursuz! Hafızlığınız mükemmel seviyede. Tebrikler!';
+  } else if (pct >= 80) {
+    emoji = '🎉'; msg = 'Harika bir performans! Birkaç küçük tekrar ile kusursuzlaşabilir.';
+  } else if (pct >= 60) {
+    emoji = '👍'; msg = 'Gayet iyi. Düzenli tekrarlarla hafızlığınızı daha da pekiştirebilirsiniz.';
+  } else {
+    emoji = '📖'; msg = 'Biraz daha tekrar yapmanız faydalı olacaktır. Gayretiniz daim olsun!';
+  }
+
+  $('sonuc-emoji').textContent = emoji;
+  $('sonuc-mesaj').textContent = msg;
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
