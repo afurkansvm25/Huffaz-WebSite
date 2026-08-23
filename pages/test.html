@@ -30,6 +30,13 @@
       font-family: inherit;
       animation: pulse 1s ease;
     }
+    .quiz-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 18px;
+    }
   </style>
 </head>
 <body>
@@ -117,7 +124,8 @@
       <div id="feedback-area" class="feedback-area hidden"></div>
 
       <div class="quiz-footer">
-        <button id="btn-sonraki" class="btn btn-primary hidden" style="padding:10px 24px;font-size:.95rem;">Sonraki Soru →</button>
+        <button id="btn-onceki" class="btn btn-secondary hidden" style="padding:10px 22px;font-size:.95rem;">← Önceki Soru</button>
+        <button id="btn-sonraki" class="btn btn-primary hidden" style="padding:10px 24px;font-size:.95rem;margin-left:auto;">Sonraki Soru →</button>
       </div>
     </div>
 
@@ -263,6 +271,7 @@ function updateSetupView() {
 function bindEvents() {
   $('btn-test-basla').addEventListener('click', startTest);
   $('btn-sonraki').addEventListener('click', nextQuestion);
+  $('btn-onceki').addEventListener('click', prevQuestion);
   $('btn-tekrar').addEventListener('click', () => {
     showScreen('setup');
     updateSetupView();
@@ -432,7 +441,7 @@ function getWordDistractors(correctWord, promptAyah, count = 3) {
 
 function startTest() {
   const limit = parseInt($('soru-sayisi').value) || 0;
-  const kapsam = targetSurahNo ? 'surah' : $('test-kapsami').value;
+  const kapsam = targetSurahNo ? $('test-kapsami').value : $('test-kapsami').value;
   const testTuru = $('test-turu') ? $('test-turu').value : 'ardisik';
   const questions = buildQuizQuestions(limit, kapsam, testTuru);
 
@@ -444,7 +453,7 @@ function startTest() {
   quizState = {
     questions,
     currentIdx: 0,
-    score: 0,
+    userAnswers: {},   // idx -> { isCorrect, selectedKey, feedbackText }
     answered: false
   };
 
@@ -454,14 +463,23 @@ function startTest() {
 
 function renderCurrentQuestion() {
   const q = quizState.questions[quizState.currentIdx];
-  quizState.answered = false;
+  const prevAnswer = quizState.userAnswers[quizState.currentIdx];
+  quizState.answered = Boolean(prevAnswer);
 
   const total = quizState.questions.length;
   const curr = quizState.currentIdx + 1;
+  const currentScore = Object.values(quizState.userAnswers).filter(a => a.isCorrect).length;
+  const answeredCount = Object.keys(quizState.userAnswers).length;
 
   $('quiz-no').textContent = `Soru ${curr} / ${total}`;
-  $('quiz-puan').textContent = `Puan: ${quizState.score} / ${curr - 1}`;
+  $('quiz-puan').textContent = `Puan: ${currentScore} / ${answeredCount}`;
   $('quiz-fill').style.width = `${((curr - 1) / total) * 100}%`;
+
+  // Önceki soru butonu görünürlüğü
+  const btnOnceki = $('btn-onceki');
+  if (btnOnceki) {
+    btnOnceki.classList.toggle('hidden', quizState.currentIdx === 0);
+  }
 
   const optArea = $('options-area');
   optArea.innerHTML = '';
@@ -469,44 +487,77 @@ function renderCurrentQuestion() {
   if (q.type === 'kelime') {
     // Kelime Bulma Sorusu
     $('q-label-text').textContent = 'Ayet içerisindeki boşluğa hangi kelime gelmelidir?';
-    $('q-sure-info').innerHTML = `${q.promptAyah.surahNo}. ${q.promptAyah.surahTr} Suresi<span id="prompt-ayah-ref" style="display:none">, ${q.promptAyah.ayahNo}. Ayet</span>:`;
-    $('q-text').innerHTML = q.promptHtml;
+    $('q-sure-info').innerHTML = `${q.promptAyah.surahNo}. ${q.promptAyah.surahTr} Suresi<span id="prompt-ayah-ref" style="${prevAnswer ? 'display:inline' : 'display:none'}">, ${q.promptAyah.ayahNo}. Ayet</span>:`;
+    $('q-text').innerHTML = prevAnswer ? q.fullHtml : q.promptHtml;
 
-    const distractors = getWordDistractors(q.correctWord, q.promptAyah, 3);
-    const options = [q.correctWord, ...distractors].sort(() => Math.random() - .5);
+    if (!q.options) {
+      const distractors = getWordDistractors(q.correctWord, q.promptAyah, 3);
+      q.options = [q.correctWord, ...distractors].sort(() => Math.random() - .5);
+    }
 
-    options.forEach(word => {
+    q.options.forEach(word => {
       const btn = document.createElement('button');
       btn.className = 'option-btn';
       btn.innerHTML = `<span style="flex:1;text-align:center;font-size:1.4rem">${word}</span>`;
-      btn.addEventListener('click', () => handleWordAnswer(word, q.correctWord, btn, q));
+
+      if (prevAnswer) {
+        btn.disabled = true;
+        if (word === q.correctWord) btn.classList.add('correct');
+        if (!prevAnswer.isCorrect && word === prevAnswer.selectedWord) btn.classList.add('wrong');
+      } else {
+        btn.addEventListener('click', () => handleWordAnswer(word, q.correctWord, btn, q));
+      }
       optArea.appendChild(btn);
     });
 
   } else {
     // Ardışık Ayet Sorusu
     $('q-label-text').textContent = 'Bu ayetten sonra hangi ayet gelir?';
-    $('q-sure-info').innerHTML = `${q.prompt.surahNo}. ${q.prompt.surahTr} Suresi<span id="prompt-ayah-ref" style="display:none">, ${q.prompt.ayahNo}. Ayet</span>:`;
+    $('q-sure-info').innerHTML = `${q.prompt.surahNo}. ${q.prompt.surahTr} Suresi<span id="prompt-ayah-ref" style="${prevAnswer ? 'display:inline' : 'display:none'}">, ${q.prompt.ayahNo}. Ayet</span>:`;
     $('q-text').textContent = getCleanAyahText(q.prompt);
 
-    const distractors = getDistractors(q.prompt, q.correct, 3);
-    const options = [q.correct, ...distractors].sort(() => Math.random() - .5);
+    if (!q.options) {
+      const distractors = getDistractors(q.prompt, q.correct, 3);
+      q.options = [q.correct, ...distractors].sort(() => Math.random() - .5);
+    }
 
-    options.forEach(opt => {
+    q.options.forEach(opt => {
+      const optKey = `${opt.surahNo}:${opt.ayahNo}`;
+      const correctKey = `${q.correct.surahNo}:${q.correct.ayahNo}`;
       const btn = document.createElement('button');
       btn.className = 'option-btn';
       btn.innerHTML = `
         <span style="flex:1">${getCleanAyahText(opt)}</span>
-        <span class="opt-ref" style="font-size:.75rem;color:var(--gray-400);margin-right:10px;font-family:var(--font-ui);white-space:nowrap;display:none;">${opt.surahTr} ${opt.ayahNo}</span>
+        <span class="opt-ref" style="font-size:.75rem;color:var(--gray-400);margin-right:10px;font-family:var(--font-ui);white-space:nowrap;${prevAnswer ? 'display:inline;' : 'display:none;'}">${opt.surahTr} ${opt.ayahNo}</span>
       `;
-      btn.addEventListener('click', () => handleAnswer(opt, q.correct, btn));
+
+      if (prevAnswer) {
+        btn.disabled = true;
+        if (optKey === correctKey) btn.classList.add('correct');
+        if (!prevAnswer.isCorrect && optKey === prevAnswer.selectedKey) btn.classList.add('wrong');
+      } else {
+        btn.addEventListener('click', () => handleAnswer(opt, q.correct, btn));
+      }
       optArea.appendChild(btn);
     });
   }
 
-  $('feedback-area').className = 'feedback-area hidden';
-  $('feedback-area').textContent = '';
-  $('btn-sonraki').classList.add('hidden');
+  const fb = $('feedback-area');
+  const nextBtn = $('btn-sonraki');
+
+  if (prevAnswer) {
+    fb.className = 'feedback-area ' + (prevAnswer.isCorrect ? 'correct' : 'wrong');
+    fb.textContent = prevAnswer.feedbackText;
+    fb.classList.remove('hidden');
+
+    const isLast = (quizState.currentIdx + 1 >= quizState.questions.length);
+    nextBtn.textContent = isLast ? 'Sonuçları Gör 🏆' : 'Sonraki Soru →';
+    nextBtn.classList.remove('hidden');
+  } else {
+    fb.className = 'feedback-area hidden';
+    fb.textContent = '';
+    nextBtn.classList.add('hidden');
+  }
 }
 
 function handleAnswer(selected, correct, selectedBtn) {
@@ -514,7 +565,17 @@ function handleAnswer(selected, correct, selectedBtn) {
   quizState.answered = true;
 
   const isCorrect = (selected.surahNo === correct.surahNo && selected.ayahNo === correct.ayahNo);
-  if (isCorrect) quizState.score++;
+  const feedbackText = isCorrect ? '✓ Doğru cevap! MaşaAllah.' : `✗ Yanlış. Doğru ayet: ${correct.surahTr} ${correct.ayahNo}. ayet`;
+
+  quizState.userAnswers[quizState.currentIdx] = {
+    isCorrect,
+    selectedKey: `${selected.surahNo}:${selected.ayahNo}`,
+    feedbackText
+  };
+
+  const currentScore = Object.values(quizState.userAnswers).filter(a => a.isCorrect).length;
+  const answeredCount = Object.keys(quizState.userAnswers).length;
+  $('quiz-puan').textContent = `Puan: ${currentScore} / ${answeredCount}`;
 
   const promptRef = $('prompt-ayah-ref');
   if (promptRef) promptRef.style.display = 'inline';
@@ -537,7 +598,7 @@ function handleAnswer(selected, correct, selectedBtn) {
   const fb = $('feedback-area');
   fb.classList.remove('hidden');
   fb.className = 'feedback-area ' + (isCorrect ? 'correct' : 'wrong');
-  fb.textContent = isCorrect ? '✓ Doğru cevap! MaşaAllah.' : `✗ Yanlış. Doğru ayet: ${correct.surahTr} ${correct.ayahNo}. ayet`;
+  fb.textContent = feedbackText;
 
   const isLast = (quizState.currentIdx + 1 >= quizState.questions.length);
   const nextBtn = $('btn-sonraki');
@@ -550,7 +611,17 @@ function handleWordAnswer(selectedWord, correctWord, selectedBtn, q) {
   quizState.answered = true;
 
   const isCorrect = (selectedWord === correctWord);
-  if (isCorrect) quizState.score++;
+  const feedbackText = isCorrect ? '✓ Doğru kelime! Tebrikler.' : `✗ Yanlış. Doğru kelime: "${correctWord}" (${q.promptAyah.surahTr} ${q.promptAyah.ayahNo}. ayet)`;
+
+  quizState.userAnswers[quizState.currentIdx] = {
+    isCorrect,
+    selectedWord,
+    feedbackText
+  };
+
+  const currentScore = Object.values(quizState.userAnswers).filter(a => a.isCorrect).length;
+  const answeredCount = Object.keys(quizState.userAnswers).length;
+  $('quiz-puan').textContent = `Puan: ${currentScore} / ${answeredCount}`;
 
   // Soru metnindeki boşluğu doğru kelimeyle aydınlat
   $('q-text').innerHTML = q.fullHtml;
@@ -571,7 +642,7 @@ function handleWordAnswer(selectedWord, correctWord, selectedBtn, q) {
   const fb = $('feedback-area');
   fb.classList.remove('hidden');
   fb.className = 'feedback-area ' + (isCorrect ? 'correct' : 'wrong');
-  fb.textContent = isCorrect ? '✓ Doğru kelime! Tebrikler.' : `✗ Yanlış. Doğru kelime: "${correctWord}" (${q.promptAyah.surahTr} ${q.promptAyah.ayahNo}. ayet)`;
+  fb.textContent = feedbackText;
 
   const isLast = (quizState.currentIdx + 1 >= quizState.questions.length);
   const nextBtn = $('btn-sonraki');
@@ -588,10 +659,17 @@ function nextQuestion() {
   }
 }
 
+function prevQuestion() {
+  if (quizState && quizState.currentIdx > 0) {
+    quizState.currentIdx--;
+    renderCurrentQuestion();
+  }
+}
+
 function showResults() {
   showScreen('sonuc');
   const total = quizState.questions.length;
-  const score = quizState.score;
+  const score = Object.values(quizState.userAnswers).filter(a => a.isCorrect).length;
   const pct = Math.round((score / total) * 100);
 
   $('sonuc-skor').textContent = `${score} / ${total}`;
