@@ -63,13 +63,15 @@
   <!-- Üst Bar: Tek/Çift Switch, Kuran Yönüne Uygun Navigasyon Grubu -->
   <div class="oku-top-bar">
     <!-- Sol: Tek / Çift Sayfa Switch -->
-    <div class="spread-switch-container">
-      <button id="btn-spread-single" class="spread-mode-btn active" onclick="setSpreadMode('single')" title="Tek Sayfa">
-        📄 Tek Sayfa
-      </button>
-      <button id="btn-spread-double" class="spread-mode-btn" onclick="setSpreadMode('double')" title="Çift Sayfa (Sağ-Sol)">
-        📖 Çift Sayfa
-      </button>
+    <div class="view-mode-left">
+      <div class="spread-switch-container">
+        <button id="btn-spread-single" class="spread-mode-btn active" onclick="setSpreadMode('single')" title="Tek Sayfa">
+          📄 Tek Sayfa
+        </button>
+        <button id="btn-spread-double" class="spread-mode-btn" onclick="setSpreadMode('double')" title="Çift Sayfa (Sağ-Sol)">
+          📖 Çift Sayfa
+        </button>
+      </div>
     </div>
 
     <!-- Orta: Kuran Sağdan Sola Sayfa Geçiş Grubu (Solda Sonraki, Ortada Sayfa Seçici, Sağda Önceki) -->
@@ -90,8 +92,10 @@
     </div>
 
     <!-- Sağ: Sure Bilgisi -->
-    <div style="font-size:.85rem;font-weight:600;color:var(--gray-600)" id="top-sure-info">
-      —
+    <div class="view-mode-right">
+      <div style="font-size:.85rem;font-weight:600;color:var(--gray-600)" id="top-sure-info">
+        —
+      </div>
     </div>
   </div>
 
@@ -211,7 +215,7 @@ function renderPage(pageNo) {
       <div class="mushaf-single-wrap">
         <div class="mushaf-img-frame">
           <img src="../mushaf_pages/page_${pageNo}.webp" alt="Mushaf Sayfa ${pageNo}" loading="eager">
-          <div class="mushaf-img-badge">Sayfa ${pageNo}</div>
+          <div class="page-foot-info">Sayfa ${pageNo}</div>
         </div>
       </div>
     `;

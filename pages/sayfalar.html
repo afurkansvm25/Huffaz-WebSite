@@ -138,7 +138,7 @@
   <!-- Üst Bar: Mod Seçimi, Kuran Yönüne Uygun Navigasyon Grubu, Yer İmi -->
   <div class="view-mode-bar">
     <!-- Sol: Mod Toggle & Tek/Çift Switch -->
-    <div style="display:flex;align-items:center;gap:8px">
+    <div class="view-mode-left">
       <div class="mode-toggle">
         <button id="btn-mode-liste"  class="mode-btn active" onclick="setMode('liste')">📋 Ayet Listesi</button>
         <button id="btn-mode-mushaf" class="mode-btn"        onclick="setMode('mushaf')">📖 Orijinal Mushaf</button>
@@ -173,7 +173,7 @@
     </div>
 
     <!-- Sağ: Yer İmi -->
-    <div>
+    <div class="view-mode-right">
       <button id="btn-bm-sayfa" class="btn btn-sm btn-outline" onclick="togglePageBookmark()">🔖</button>
     </div>
   </div>
@@ -406,12 +406,12 @@ function renderMushafPdfMode(pageNo, juzNo, surahs) {
   container.innerHTML = '';
 
   if (spreadMode === 'single') {
-    // Tek Sayfa Görünümü
+    // Tek Sayfa Görünümü (Çift sayfa modundaki gibi temiz ve ortalı alt etiket)
     container.innerHTML = `
       <div class="mushaf-single-wrap">
         <div class="mushaf-img-frame">
           <img src="../mushaf_pages/page_${pageNo}.webp" alt="Mushaf Sayfa ${pageNo}" loading="eager">
-          <div class="mushaf-img-badge">Sayfa ${pageNo}</div>
+          <div class="page-foot-info">Sayfa ${pageNo}</div>
         </div>
       </div>
     `;

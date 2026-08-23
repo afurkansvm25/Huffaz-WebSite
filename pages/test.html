@@ -191,19 +191,50 @@ function updateSetupView() {
     const surahName = surahAyahs.length ? surahAyahs[0].surahTr : `${targetSurahNo}. Sure`;
     $('setup-title').textContent = `${targetSurahNo}. ${surahName} Suresi Testi`;
     $('bar-title').textContent = `🎯 ${surahName} Testi`;
-    $('kapsam-row').classList.add('hidden');
 
-    const questions = buildQuizQuestions(0, 'surah', testTuru);
-    if (questions.length === 0) {
-      descEl.textContent = `${surahName} suresinde yeterli soru üretilemedi.`;
-      btnBasla.disabled = true;
+    const selKapsam = $('test-kapsami');
+    if (!selKapsam.dataset.surahConfigured || selKapsam.dataset.surahConfigured !== String(targetSurahNo)) {
+      selKapsam.dataset.surahConfigured = String(targetSurahNo);
+      selKapsam.innerHTML = `
+        <option value="ezber" selected>Ezberlediklerim</option>
+        <option value="tumu">Bütün Sure</option>
+      `;
+    }
+    $('kapsam-row').classList.remove('hidden');
+
+    const kapsam = selKapsam.value;
+    const questions = buildQuizQuestions(0, kapsam, testTuru);
+    const surahMemCount = surahAyahs.filter(a => Memorized.has(a.surahNo, a.ayahNo)).length;
+
+    if (kapsam === 'ezber') {
+      if (surahMemCount === 0) {
+        descEl.innerHTML = `⚠️ <b>${surahName}</b> suresinden henüz hiç ayet ezberlemediniz. "Bütün Sure" seçeneğini seçebilir veya <a href="sureler.html" style="color:var(--green-700);text-decoration:underline;">Sureler</a> bölümünden ezberlediklerinizi işaretleyebilirsiniz.`;
+        btnBasla.disabled = true;
+      } else if (questions.length === 0) {
+        descEl.textContent = (testTuru === 'kelime')
+          ? `ℹ️ ${surahName} suresinde ezberlenen ayetler içerisinde uygun kelime sorusu bulunamadı.`
+          : `ℹ️ ${surahName} suresinde ${surahMemCount} ayet ezberlendi, ancak ardışık test için arka arkaya gelen en az 2 ayet gerekiyor.`;
+        btnBasla.disabled = true;
+      } else {
+        const typeText = (testTuru === 'kelime') ? 'kelime bulma sorusu' : 'ardışık ayet sorusu';
+        descEl.textContent = `${surahName} suresinde ezberlediğiniz ${surahMemCount} ayet üzerinden ${questions.length} farklı ${typeText} üretilebilir.`;
+        btnBasla.disabled = false;
+      }
     } else {
-      const typeText = (testTuru === 'kelime') ? 'ayet içi kelime bulma' : 'ardışık ayet tamamlama';
-      descEl.textContent = `${surahName} Suresi (${surahAyahs.length} ayet) üzerinden ${typeText} testi.`;
+      const typeText = (testTuru === 'kelime') ? 'kelime bulma soruları' : 'ardışık ayet soruları';
+      descEl.textContent = `${surahName} Suresi (${surahAyahs.length} ayet) üzerinden ${typeText} üretilecek.`;
       btnBasla.disabled = false;
     }
   } else {
     // Genel Test
+    const selKapsam = $('test-kapsami');
+    if (selKapsam.dataset.surahConfigured) {
+      delete selKapsam.dataset.surahConfigured;
+      selKapsam.innerHTML = `
+        <option value="ezber" selected>Yalnızca Ezberlenen Ayetler</option>
+        <option value="tumu">Tüm Kur'an-ı Kerim</option>
+      `;
+    }
     const kapsam = $('test-kapsami').value;
     const questions = buildQuizQuestions(0, kapsam, testTuru);
 
@@ -247,13 +278,15 @@ function showScreen(screen) {
 // ── Soru Üretici (Ardışık Ayet ve Kelime Bulma) ──
 function buildQuizQuestions(limit = 0, kapsam = 'ezber', type = 'ardisik') {
   const useAll = (kapsam === 'tumu');
-  const isSurahMode = (kapsam === 'surah' || targetSurahNo !== null);
 
   if (type === 'kelime') {
     // Kelime Bulma / Boşluk Doldurma Modu
     const questions = [];
     const pool = QURAN_DATA.filter(a => {
-      if (isSurahMode) return a.surahNo === targetSurahNo;
+      if (targetSurahNo) {
+        if (a.surahNo !== targetSurahNo) return false;
+        return useAll || Memorized.has(a.surahNo, a.ayahNo);
+      }
       return useAll || Memorized.has(a.surahNo, a.ayahNo);
     });
 
@@ -305,9 +338,11 @@ function buildQuizQuestions(limit = 0, kapsam = 'ezber', type = 'ardisik') {
       const a1 = QURAN_DATA[i];
       const a2 = QURAN_DATA[i + 1];
       if (a1.surahNo === a2.surahNo && a2.ayahNo === a1.ayahNo + 1) {
-        if (isSurahMode) {
+        if (targetSurahNo) {
           if (a1.surahNo === targetSurahNo) {
-            pairs.push({ type: 'ardisik', prompt: a1, correct: a2 });
+            if (useAll || (Memorized.has(a1.surahNo, a1.ayahNo) && Memorized.has(a2.surahNo, a2.ayahNo))) {
+              pairs.push({ type: 'ardisik', prompt: a1, correct: a2 });
+            }
           }
         } else if (useAll || (Memorized.has(a1.surahNo, a1.ayahNo) && Memorized.has(a2.surahNo, a2.ayahNo))) {
           pairs.push({ type: 'ardisik', prompt: a1, correct: a2 });

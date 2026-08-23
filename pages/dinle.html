@@ -288,10 +288,11 @@
           <label class="dinle-label" for="select-reciter">Okuyucu:</label>
           <select id="select-reciter" class="dinle-select" onchange="onSettingChange()">
             <option value="alafasy" selected>Mishary Rashed Alafasy (مشاري راشد العفاسي)</option>
+            <option value="dussary">Yasser Al-Dosari (ياسر الدوسري)</option>
             <option value="seferagic">Fatih Seferagic (فاتح سفرجيك)</option>
             <option value="abdulbasit">Abdulbasit Abdussamad (عبد الباسط عبد الصمد)</option>
             <option value="husary">Mahmoud Khalil Al-Husary (محمود خليل الحصري)</option>
-            <option value="ghamadi">Saad Al-Ghamdi (سعد الغامدي)</option>
+            <option value="ghamadi">Saad Al-Ghamdi (سعد الغamدي)</option>
             <option value="minshawi">Mohamed Siddiq El-Minshawi (محمد صديق المنشاوي)</option>
           </select>
         </div>
@@ -405,6 +406,12 @@ const RECITERS = {
     arName: 'مشاري راشد العفاسي',
     type: 'ayah',
     url: (s, a) => `https://everyayah.com/data/Alafasy_128kbps/${pad3(s)}${pad3(a)}.mp3`
+  },
+  dussary: {
+    name: 'Yasser Al-Dosari',
+    arName: 'ياسر الدوسري',
+    type: 'ayah',
+    url: (s, a) => `https://everyayah.com/data/Yasser_Ad-Dussary_128kbps/${pad3(s)}${pad3(a)}.mp3`
   },
   seferagic: {
     name: 'Fatih Seferagic',

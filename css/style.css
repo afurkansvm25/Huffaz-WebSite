@@ -216,28 +216,30 @@ input, select { font-family: var(--font-ui); }
 
 .panel-bar {
   background: var(--header-bg);
-  padding: 10px 14px;
-  display: flex; align-items: center; gap: 10px;
-  flex-wrap: wrap;
+  min-height: 56px;
+  padding: 10px 16px;
+  display: flex; align-items: center; gap: 12px;
   box-shadow: 0 2px 8px rgba(0,0,0,.2);
 }
 .panel-geri-btn {
   background: rgba(255,255,255,.15);
   border: none; color: #fff;
-  padding: 7px 13px; border-radius: var(--r-s);
-  font-size: .88rem; white-space: nowrap;
+  padding: 8px 14px; border-radius: var(--r-s, 8px);
+  font-size: .88rem; font-weight: 600; white-space: nowrap;
   transition: background var(--t);
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer;
 }
 .panel-geri-btn:hover { background: rgba(255,255,255,.28); }
 
 .panel-title-area {
   flex: 1; min-width: 0;
-  display: flex; flex-direction: column; gap: 2px;
+  display: flex; align-items: center; gap: 8px;
 }
-.panel-tr { font-size: .95rem; font-weight: 600; color: #fff; }
-.panel-ar { font-family: var(--font-ar); font-size: 1.05rem; color: rgba(255,255,255,.82); }
+.panel-tr { font-size: 1.05rem; font-weight: 700; color: #fff; line-height: 1; }
+.panel-ar { font-family: var(--font-ar); font-size: 1.15rem; color: rgba(255,255,255,.85); line-height: 1; }
 
-.panel-bulk-btns { display: flex; gap: 6px; flex-shrink: 0; }
+.panel-bulk-btns { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
 .panel-prog-row {
   background: var(--card);

@@ -5,13 +5,23 @@
 'use strict';
 
 const Auth = {
-  LS_USERS: 'huffaz_accounts_v1',
-  LS_ACTIVE_USER: 'huffaz_active_user_id',
+  LS_USERS: 'huffaz_accounts_v2',
+  LS_ACTIVE_USER: 'huffaz_active_user_id_v2',
 
   _users: {},
   _activeUser: null,
 
   init() {
+    // Eski versiyon hesapları temizle (Kullanıcı talebi doğrultusunda)
+    try {
+      if (localStorage.getItem('huffaz_accounts_v1')) {
+        localStorage.removeItem('huffaz_accounts_v1');
+        localStorage.removeItem('huffaz_active_user_id');
+      }
+    } catch (e) {
+      console.warn('Storage cleanup error:', e);
+    }
+
     this.loadUsers();
     this.loadActiveUser();
     this.injectAuthUI();
@@ -70,7 +80,14 @@ const Auth = {
     if (!username) return { success: false, message: 'Kullanıcı adı boş olamaz.' };
     const id = username.toLowerCase().replace(/[^a-z0-9_]/g, '');
     if (!id) return { success: false, message: 'Geçersiz kullanıcı adı.' };
-    if (this._users[id]) return { success: false, message: 'Bu kullanıcı adı zaten mevcut.' };
+    
+    // Benzersiz kullanıcı adı kontrolü ve net uyarı
+    if (this._users[id]) {
+      return { 
+        success: false, 
+        message: `⚠️ "${username}" kullanıcı adı zaten alınmış! Lütfen farklı bir isim belirleyin veya "Giriş Yap" sekmesini kullanın.` 
+      };
+    }
 
     // Mevcut aktif kullanıcının verilerini yeni hesaba aktar
     const initialData = this._activeUser ? JSON.parse(JSON.stringify(this._activeUser.data)) : {
@@ -99,7 +116,12 @@ const Auth = {
     username = username.trim();
     const id = username.toLowerCase().replace(/[^a-z0-9_]/g, '');
     const user = this._users[id];
-    if (!user) return { success: false, message: 'Kullanıcı bulunamadı.' };
+    if (!user) {
+      return { 
+        success: false, 
+        message: `⚠️ "${username}" adında kayıtlı bir hesap bulunamadı. Lütfen "Yeni Kayıt Ol" sekmesinden hesap oluşturun.` 
+      };
+    }
     if (user.password && user.password !== password) {
       return { success: false, message: 'Şifre hatalı.' };
     }

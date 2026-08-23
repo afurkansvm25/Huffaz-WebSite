@@ -655,7 +655,7 @@ button, a, input, select, textarea {
 }
 
 /* ── Üst Kuran Navigasyon Grubu (Sağdan Sola Mantığı) ───────────── */
-.quran-nav-bar {
+.view-mode-bar, .oku-top-bar {
   background: var(--card);
   border-bottom: 1px solid var(--gray-200);
   padding: 8px 16px;
@@ -669,12 +669,30 @@ button, a, input, select, textarea {
   z-index: 250;
 }
 
+.view-mode-left {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  justify-content: flex-start;
+}
+
+.view-mode-right {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
 .quran-nav-group {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  margin: 0 auto;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .quran-nav-center {
@@ -716,6 +734,8 @@ button, a, input, select, textarea {
   gap: 4px;
 }
 .app-bar-btn:hover { background: rgba(255,255,255,.25); }
+
+.mushaf-pdf-view {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -770,19 +790,21 @@ button, a, input, select, textarea {
   max-width: 650px;
   margin: 0 auto;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
 }
 
 .mushaf-img-frame {
   position: relative;
-  background: #fff;
+  width: 100%;
+  background: #fdfaf3;
   border: 2px solid #b89454;
   border-radius: var(--r-sm);
   box-shadow: 0 8px 32px rgba(0,0,0,.22), 0 2px 8px rgba(0,0,0,.1);
   overflow: hidden;
-  line-height: 0;
   display: flex;
   flex-direction: column;
+  align-items: center;
 }
 
 .mushaf-img-frame img {
@@ -791,20 +813,6 @@ button, a, input, select, textarea {
   display: block;
   user-select: none;
   -webkit-user-drag: none;
-}
-
-.mushaf-img-badge {
-  position: absolute;
-  bottom: 8px;
-  right: 12px;
-  background: rgba(20,83,45,.88);
-  color: #fff;
-  font-size: .72rem;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: var(--r-full);
-  backdrop-filter: blur(4px);
-  pointer-events: none;
 }
 
 /* Çift Sayfa (Spread) Görünümü */
