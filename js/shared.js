@@ -6,7 +6,7 @@
 
 // ── localStorage anahtar yardımcıları (Kullanıcı Profiline Bağlı) ───
 function getUserKey(key) {
-  const activeId = localStorage.getItem('huffaz_active_user_id') || 'guest';
+  const activeId = localStorage.getItem('huffaz_active_user_id_v3') || 'guest';
   return `huffaz_${activeId}_${key}`;
 }
 
@@ -233,44 +233,31 @@ const SimilarLists = {
 
   load() {
     try {
-      const k = getUserKey('similar_lists');
-      let raw = localStorage.getItem(k);
-      if (!raw) raw = localStorage.getItem('huffaz_similar_lists_v1');
-      this._lists = raw ? JSON.parse(raw) : null;
+      if (typeof Auth !== 'undefined' && Auth._activeUser && Auth._activeUser.data && Auth._activeUser.data.similarLists) {
+        this._lists = JSON.parse(JSON.stringify(Auth._activeUser.data.similarLists));
+      } else {
+        const k = getUserKey('similar_lists');
+        let raw = localStorage.getItem(k);
+        this._lists = raw ? JSON.parse(raw) : [];
+      }
     } catch {
-      this._lists = null;
+      this._lists = [];
     }
 
-    if (!this._lists || !Array.isArray(this._lists)) {
-      this._lists = this.getDefaultLists();
+    if (!Array.isArray(this._lists)) {
+      this._lists = [];
       this.save();
     }
     return this;
   },
 
   getDefaultLists() {
-    return [
-      {
-        id: 'list_default_1',
-        title: 'Örnek: "İnneke Ente\'l-Alîmü\'l-Hakîm"',
-        desc: 'Bakara 32 ve diğer benzer bitişli ayetler',
-        createdAt: Date.now(),
-        ayahs: ['2:32', '2:127']
-      },
-      {
-        id: 'list_default_2',
-        title: 'Örnek: "Kâlû Subhâneke"',
-        desc: 'Meleklerin tesbihi ve benzer başlayan ayetler',
-        createdAt: Date.now(),
-        ayahs: ['2:32', '10:10']
-      }
-    ];
+    return [];
   },
 
   save() {
     try {
       localStorage.setItem(getUserKey('similar_lists'), JSON.stringify(this._lists));
-      localStorage.setItem('huffaz_similar_lists_v1', JSON.stringify(this._lists));
       if (typeof Auth !== 'undefined' && Auth._activeUser && Auth._activeUser.data) {
         Auth._activeUser.data.similarLists = this._lists;
         Auth.saveUsers();

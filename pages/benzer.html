@@ -265,9 +265,6 @@ function renderAllLists(filter = '') {
           ${list.desc ? `<div class="benzer-card-desc">💡 ${list.desc}</div>` : ''}
         </div>
         <div class="benzer-card-actions">
-          <button class="btn btn-sm ${isCompareMode ? 'btn-gold' : 'btn-outline'}" onclick="toggleCompareMode('${list.id}')" title="Ayetleri yan yana karşılaştır">
-            🔍 ${isCompareMode ? 'Normal Görünüm' : 'Yan Yana Karşılaştır'}
-          </button>
           <button class="btn btn-sm btn-primary" onclick="openAddAyahModal('${list.id}')" title="Bu listeye ayet ekle">
             ＋ Ayet Ekle
           </button>
@@ -291,27 +288,22 @@ function renderAllLists(filter = '') {
         </div>
       `;
     } else {
-      ayahsHtml = `<div class="benzer-ayahs-grid ${isCompareMode ? 'compare-mode' : ''}">`;
+      ayahsHtml = `<div class="benzer-ayahs-grid">`;
 
       list.ayahs.forEach(key => {
         const [s, a] = key.split(':').map(Number);
         const ayah = QURAN_DATA.find(x => x.surahNo === s && x.ayahNo === a);
         if (!ayah) return;
 
-        const isEzber = Memorized.has(s, a);
         const pageNum = pageForAyah(s, a);
 
         ayahsHtml += `
-          <div class="benzer-ayah-item ${isEzber ? 'ezber' : ''}" id="item-${list.id}-${s}-${a}">
+          <div class="benzer-ayah-item" id="item-${list.id}-${s}-${a}">
             <div class="benzer-item-top">
               <a href="sureler.html" class="benzer-item-badge" title="Sureye Git">
                 📖 ${s}. ${ayah.surahTr} Suresi, ${a}. Ayet (Sayfa ${pageNum})
               </a>
               <div style="display:flex;align-items:center;gap:8px">
-                <label style="display:inline-flex;align-items:center;gap:4px;font-size:.78rem;font-weight:700;color:${isEzber ? 'var(--green-700)' : 'var(--gray-500)'};cursor:pointer;">
-                  <input type="checkbox" ${isEzber ? 'checked' : ''} onchange="toggleEzberInList(${s}, ${a}, '${list.id}')">
-                  ${isEzber ? 'Ezberde ✓' : 'Ezberle'}
-                </label>
                 <button class="btn btn-sm btn-outline" style="padding:2px 8px;font-size:.75rem;color:var(--red-600);border-color:var(--red-200)" onclick="removeAyahFromList('${list.id}', ${s}, ${a})" title="Listeden Çıkar">
                   ✕ Çıkar
                 </button>

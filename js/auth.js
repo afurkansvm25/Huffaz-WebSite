@@ -5,19 +5,18 @@
 'use strict';
 
 const Auth = {
-  LS_USERS: 'huffaz_accounts_v2',
-  LS_ACTIVE_USER: 'huffaz_active_user_id_v2',
+  LS_USERS: 'huffaz_accounts_v3',
+  LS_ACTIVE_USER: 'huffaz_active_user_id_v3',
 
   _users: {},
   _activeUser: null,
 
   init() {
-    // Eski versiyon hesapları temizle (Kullanıcı talebi doğrultusunda)
+    // Önceki versiyon hesapları ve test verilerini temizle (Kullanıcı talebi)
     try {
-      if (localStorage.getItem('huffaz_accounts_v1')) {
-        localStorage.removeItem('huffaz_accounts_v1');
-        localStorage.removeItem('huffaz_active_user_id');
-      }
+      ['huffaz_accounts_v1', 'huffaz_accounts_v2', 'huffaz_active_user_id', 'huffaz_active_user_id_v2', 'huffaz_similar_lists_v1'].forEach(k => {
+        if (localStorage.getItem(k)) localStorage.removeItem(k);
+      });
     } catch (e) {
       console.warn('Storage cleanup error:', e);
     }
@@ -47,7 +46,8 @@ const Auth = {
           bookmarks: [],
           lastPage: 1,
           spreadMode: 'single',
-          testScore: { total: 0, correct: 0 }
+          testScore: { total: 0, correct: 0 },
+          similarLists: []
         }
       };
       this.saveUsers();
@@ -95,7 +95,8 @@ const Auth = {
       bookmarks: [],
       lastPage: 1,
       spreadMode: 'single',
-      testScore: { total: 0, correct: 0 }
+      testScore: { total: 0, correct: 0 },
+      similarLists: []
     };
 
     const newUser = {
@@ -157,9 +158,10 @@ const Auth = {
     this._activeUser = this._users[userId];
     localStorage.setItem(this.LS_ACTIVE_USER, userId);
 
-    // Memorized ve Bookmarks yeniden yükle
+    // Memorized, Bookmarks ve SimilarLists'i yeni kullanıcıya göre yeniden yükle
     if (typeof Memorized !== 'undefined' && Memorized.load) Memorized.load();
     if (typeof Bookmarks !== 'undefined' && Bookmarks.load) Bookmarks.load();
+    if (typeof SimilarLists !== 'undefined' && SimilarLists.load) SimilarLists.load();
 
     this.updateHeaderBadge();
     if (typeof showToast === 'function') {
