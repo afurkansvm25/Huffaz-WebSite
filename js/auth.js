@@ -1,6 +1,6 @@
 /* ================================================================
-   auth.js — Huffaz Kullanıcı Hesap Sistemi ve Veri Senkronizasyonu
-   Tüm sayfalarda kullanıcı bazlı veri yönetimi ve cihazlar arası aktarım sağlar.
+   auth.js — Huffaz Kullanıcı Hesap Sistemi ve Gerçek Zamanlı Bulut Senkronizasyonu
+   Cihazlar arası (Bilgisayar, Tablet, Telefon) anlık hesap ve veri senkronizasyonu sağlar.
 ================================================================ */
 'use strict';
 
@@ -8,11 +8,16 @@ const Auth = {
   LS_USERS: 'huffaz_accounts_v3',
   LS_ACTIVE_USER: 'huffaz_active_user_id_v3',
 
+  // Global Bulut Veritabanı (Cihazlar arası senkronizasyon için)
+  CLOUD_API: 'https://api.restful-api.dev/objects',
+  REGISTRY_ID: 'ff8081819ff5b11001a033f67e6b0f58',
+
   _users: {},
   _activeUser: null,
+  _syncTimeout: null,
 
   init() {
-    // Önceki versiyon hesapları ve test verilerini temizle (Kullanıcı talebi)
+    // Önceki yerel test verilerini temizle
     try {
       ['huffaz_accounts_v1', 'huffaz_accounts_v2', 'huffaz_active_user_id', 'huffaz_active_user_id_v2', 'huffaz_similar_lists_v1'].forEach(k => {
         if (localStorage.getItem(k)) localStorage.removeItem(k);
@@ -24,6 +29,11 @@ const Auth = {
     this.loadUsers();
     this.loadActiveUser();
     this.injectAuthUI();
+
+    // Arka planda aktif kullanıcının bulut verisini kontrol et ve senkronize et
+    if (!this.isGuest() && this._activeUser.cloudId) {
+      this.pullCloudSync(false);
+    }
   },
 
   loadUsers() {
@@ -75,21 +85,23 @@ const Auth = {
     return !this._activeUser || this._activeUser.id === 'guest';
   },
 
-  register(username, password) {
+  // ── Bulut Kayıt (Tüm Cihazlarda Benzersiz & Senkron) ──
+  async register(username, password) {
     username = username.trim();
     if (!username) return { success: false, message: 'Kullanıcı adı boş olamaz.' };
     const id = username.toLowerCase().replace(/[^a-z0-9_]/g, '');
     if (!id) return { success: false, message: 'Geçersiz kullanıcı adı.' };
-    
-    // Benzersiz kullanıcı adı kontrolü ve net uyarı
-    if (this._users[id]) {
-      return { 
-        success: false, 
-        message: `⚠️ "${username}" kullanıcı adı zaten alınmış! Lütfen farklı bir isim belirleyin veya "Giriş Yap" sekmesini kullanın.` 
+
+    // 1. Bulut Ana Kayıt Defterini Al
+    let registry = await this.fetchCloudRegistry();
+    if (registry && registry.users && registry.users[id]) {
+      return {
+        success: false,
+        message: `⚠️ "${username}" kullanıcı adı başka bir cihazda zaten oluşturulmuş! Lütfen "Giriş Yap" sekmesinden şifrenizle giriş yapın.`
       };
     }
 
-    // Mevcut aktif kullanıcının verilerini yeni hesaba aktar
+    // 2. Mevcut aktif kullanıcının verilerini yeni hesaba aktar
     const initialData = this._activeUser ? JSON.parse(JSON.stringify(this._activeUser.data)) : {
       memorized: [],
       bookmarks: [],
@@ -99,10 +111,46 @@ const Auth = {
       similarLists: []
     };
 
+    // 3. Bulutta Kullanıcı Nesnesi Oluştur
+    let cloudId = null;
+    try {
+      const res = await fetch(this.CLOUD_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: `huffaz_user_${id}`,
+          data: {
+            username,
+            id,
+            password: password || '',
+            createdAt: Date.now(),
+            ...initialData
+          }
+        })
+      });
+      if (res.ok) {
+        const doc = await res.json();
+        cloudId = doc.id;
+      }
+    } catch (err) {
+      console.warn('Bulut kullanıcı oluşturma uyarısı:', err);
+    }
+
+    // 4. Bulut Kayıt Defterini Güncelle
+    if (cloudId) {
+      await this.updateCloudRegistry(id, {
+        cloudId,
+        name: username,
+        password: password || '',
+        createdAt: Date.now()
+      });
+    }
+
     const newUser = {
       id,
       name: username,
       password: password || '',
+      cloudId,
       createdAt: Date.now(),
       data: initialData
     };
@@ -110,24 +158,176 @@ const Auth = {
     this._users[id] = newUser;
     this.saveUsers();
     this.switchUser(id);
-    return { success: true, message: `Hoş geldiniz, ${username}!` };
+    return { success: true, message: `Hoş geldiniz, ${username}! Hesabınız oluşturuldu ve buluta kaydedildi.` };
   },
 
-  login(username, password) {
+  // ── Bulut Giriş (Farklı Cihazlardan Anında Giriş ve Veri İndirme) ──
+  async login(username, password) {
     username = username.trim();
     const id = username.toLowerCase().replace(/[^a-z0-9_]/g, '');
-    const user = this._users[id];
-    if (!user) {
-      return { 
-        success: false, 
-        message: `⚠️ "${username}" adında kayıtlı bir hesap bulunamadı. Lütfen "Yeni Kayıt Ol" sekmesinden hesap oluşturun.` 
+    if (!id) return { success: false, message: 'Lütfen geçerli bir kullanıcı adı girin.' };
+
+    // 1. Önce Bulut Kayıt Defterini Sorgula
+    const registry = await this.fetchCloudRegistry();
+    let cloudUser = registry && registry.users ? registry.users[id] : null;
+
+    if (!cloudUser) {
+      // Yerelde var mı kontrol et
+      if (this._users[id]) {
+        cloudUser = this._users[id];
+      }
+    }
+
+    if (!cloudUser) {
+      return {
+        success: false,
+        message: `⚠️ "${username}" adında kayıtlı bir hesap bulunamadı. Lütfen "Yeni Kayıt Ol" sekmesinden hesabınızı oluşturun.`
       };
     }
-    if (user.password && user.password !== password) {
+
+    if (cloudUser.password && cloudUser.password !== password) {
       return { success: false, message: 'Şifre hatalı.' };
     }
+
+    // 2. Kullanıcının Canlı Bulut Verisini İndir
+    let userData = this._users[id] ? this._users[id].data : {
+      memorized: [],
+      bookmarks: [],
+      lastPage: 1,
+      spreadMode: 'single',
+      testScore: { total: 0, correct: 0 },
+      similarLists: []
+    };
+
+    if (cloudUser.cloudId) {
+      try {
+        const res = await fetch(`${this.CLOUD_API}/${cloudUser.cloudId}`);
+        if (res.ok) {
+          const doc = await res.json();
+          if (doc && doc.data) {
+            userData = {
+              memorized: doc.data.memorized || [],
+              bookmarks: doc.data.bookmarks || [],
+              lastPage: doc.data.lastPage || 1,
+              spreadMode: doc.data.spreadMode || 'single',
+              testScore: doc.data.testScore || { total: 0, correct: 0 },
+              similarLists: doc.data.similarLists || []
+            };
+          }
+        }
+      } catch (err) {
+        console.warn('Bulut kullanıcı verisi çekilemedi:', err);
+      }
+    }
+
+    // 3. Yerel Cihaza Kaydet ve Aktif Kullanıcı Yap
+    this._users[id] = {
+      id,
+      name: cloudUser.name || username,
+      password: cloudUser.password || '',
+      cloudId: cloudUser.cloudId || null,
+      createdAt: cloudUser.createdAt || Date.now(),
+      data: userData
+    };
+
+    this.saveUsers();
     this.switchUser(id);
-    return { success: true, message: `Giriş yapıldı: ${user.name}` };
+    return { success: true, message: `Giriş başarılı! ${username} hesabınızın tüm ezber ve listeleri bu cihaza yüklendi.` };
+  },
+
+  // ── Otomatik Bulut Senkronizasyonu (Değişiklikleri Buluta İt) ──
+  pushCloudSync() {
+    if (this.isGuest() || !this._activeUser || !this._activeUser.cloudId) return;
+
+    clearTimeout(this._syncTimeout);
+    this._syncTimeout = setTimeout(async () => {
+      try {
+        await fetch(`${this.CLOUD_API}/${this._activeUser.cloudId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: `huffaz_user_${this._activeUser.id}`,
+            data: {
+              username: this._activeUser.name,
+              id: this._activeUser.id,
+              password: this._activeUser.password || '',
+              updatedAt: Date.now(),
+              ...this._activeUser.data
+            }
+          })
+        });
+        console.log('Bulut senkronizasyonu tamamlandı (Otomatik Kayıt).');
+      } catch (err) {
+        console.warn('Bulut senkronizasyonu başarısız:', err);
+      }
+    }, 600);
+  },
+
+  // ── Buluttan Veri Çekme (Pull) ──
+  async pullCloudSync(showNotification = true) {
+    if (this.isGuest() || !this._activeUser || !this._activeUser.cloudId) return;
+
+    try {
+      const res = await fetch(`${this.CLOUD_API}/${this._activeUser.cloudId}`);
+      if (res.ok) {
+        const doc = await res.json();
+        if (doc && doc.data) {
+          this._activeUser.data = {
+            memorized: doc.data.memorized || [],
+            bookmarks: doc.data.bookmarks || [],
+            lastPage: doc.data.lastPage || 1,
+            spreadMode: doc.data.spreadMode || 'single',
+            testScore: doc.data.testScore || { total: 0, correct: 0 },
+            similarLists: doc.data.similarLists || []
+          };
+          this._users[this._activeUser.id] = this._activeUser;
+          this.saveUsers();
+
+          if (typeof Memorized !== 'undefined' && Memorized.load) Memorized.load();
+          if (typeof Bookmarks !== 'undefined' && Bookmarks.load) Bookmarks.load();
+          if (typeof SimilarLists !== 'undefined' && SimilarLists.load) SimilarLists.load();
+
+          if (showNotification && typeof showToast === 'function') {
+            showToast('☁️ Buluttan en güncel verileriniz yüklendi!', 'success');
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Bulut verisi çekilemedi:', err);
+    }
+  },
+
+  // ── Bulut Kayıt Defteri Yardımcıları ──
+  async fetchCloudRegistry() {
+    try {
+      const res = await fetch(`${this.CLOUD_API}/${this.REGISTRY_ID}`);
+      if (res.ok) {
+        const doc = await res.json();
+        return doc && doc.data ? doc.data : { users: {} };
+      }
+    } catch (err) {
+      console.warn('Kayıt defteri okuma hatası:', err);
+    }
+    return { users: {} };
+  },
+
+  async updateCloudRegistry(userId, userData) {
+    try {
+      const current = await this.fetchCloudRegistry();
+      if (!current.users) current.users = {};
+      current.users[userId] = userData;
+
+      await fetch(`${this.CLOUD_API}/${this.REGISTRY_ID}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'huffaz_global_registry_v1',
+          data: current
+        })
+      });
+    } catch (err) {
+      console.warn('Kayıt defteri güncelleme hatası:', err);
+    }
   },
 
   changePassword(oldPw, newPw, confirmPw) {
@@ -146,6 +346,7 @@ const Auth = {
     this._activeUser.password = newPw;
     this._users[this._activeUser.id] = this._activeUser;
     this.saveUsers();
+    this.pushCloudSync();
     return { success: true, message: 'Şifreniz başarıyla güncellendi!' };
   },
 
@@ -167,7 +368,6 @@ const Auth = {
     if (typeof showToast === 'function') {
       showToast(`Aktif Profil: ${this._activeUser.name}`, 'success');
     }
-    // Sayfayı hafifçe yenile veya render fonksiyonunu tetikle
     setTimeout(() => location.reload(), 400);
   },
 
@@ -175,11 +375,12 @@ const Auth = {
   exportBackup() {
     const backup = {
       appName: 'Huffaz',
-      version: '2.0',
+      version: '3.0',
       exportedAt: new Date().toISOString(),
       user: {
         id: this._activeUser.id,
         name: this._activeUser.name,
+        cloudId: this._activeUser.cloudId || null,
         data: this._activeUser.data
       }
     };
@@ -204,6 +405,7 @@ const Auth = {
         id: targetId,
         name: u.name || targetId,
         password: '',
+        cloudId: u.cloudId || null,
         createdAt: Date.now(),
         data: u.data
       };
@@ -240,7 +442,7 @@ const Auth = {
           <div class="auth-modal-header">
             <div style="display:flex;align-items:center;gap:8px">
               <span style="font-size:1.4rem">👤</span>
-              <h3 id="auth-modal-title">Kişisel Hesap & Senkronizasyon</h3>
+              <h3 id="auth-modal-title">Kişisel Hesap & Bulut Senkronizasyon</h3>
             </div>
             <button class="auth-modal-close" onclick="Auth.closeAuthModal()">✕</button>
           </div>
@@ -251,7 +453,9 @@ const Auth = {
               <div class="auth-avatar">☪</div>
               <div style="flex:1">
                 <div class="auth-profile-name" id="modal-user-name">${this._activeUser.name}</div>
-                <div class="auth-profile-status" id="modal-user-status">${this.isGuest() ? 'Misafir Modu' : 'Kayıtlı Kullanıcı'}</div>
+                <div class="auth-profile-status" id="modal-user-status">
+                  ${this.isGuest() ? 'Misafir Modu' : '☁️ Canlı Bulut Senkronizasyonu Aktif'}
+                </div>
               </div>
             </div>
 
@@ -276,23 +480,26 @@ const Auth = {
               <button class="auth-tab active" data-tab="login" onclick="Auth.setModalTab('login')">Giriş / Kayıt</button>
               <button class="auth-tab" data-tab="password" onclick="Auth.setModalTab('password')">🔑 Şifre Değiştir</button>
               <button class="auth-tab" data-tab="sync" onclick="Auth.setModalTab('sync')">📥 Yedekle</button>
-              <button class="auth-tab" data-tab="profiles" onclick="Auth.setModalTab('profiles')">👥 Profiller</button>
+              <button class="auth-tab" data-tab="profiles" onclick="Auth.setModalTab('profiles')">👥 Cihaz Profilleri</button>
             </div>
 
             <!-- 1. Giriş / Kayıt Paneli -->
             <div id="auth-tab-login" class="auth-tab-content active">
               <div class="auth-input-group">
                 <label for="auth-username">Kullanıcı Adı:</label>
-                <input id="auth-username" type="text" class="auth-field" placeholder="Örn: hafiz_ahmet">
+                <input id="auth-username" type="text" class="auth-field" placeholder="Örn: Ahmet veya hafiz_ahmet">
               </div>
               <div class="auth-input-group">
                 <label for="auth-password">Şifre / PIN (isteğe bağlı):</label>
                 <input id="auth-password" type="password" class="auth-field" placeholder="Şifreniz">
               </div>
               <div style="display:flex;gap:10px;margin-top:14px">
-                <button class="btn btn-primary" style="flex:1" onclick="Auth.handleLoginBtn()">Giriş Yap</button>
-                <button class="btn btn-gold" style="flex:1" onclick="Auth.handleRegisterBtn()">Yeni Kayıt Ol</button>
+                <button id="btn-auth-login" class="btn btn-primary" style="flex:1" onclick="Auth.handleLoginBtn()">Giriş Yap</button>
+                <button id="btn-auth-register" class="btn btn-gold" style="flex:1" onclick="Auth.handleRegisterBtn()">Yeni Kayıt Ol</button>
               </div>
+              <p style="font-size:.78rem;color:var(--gray-500);text-align:center;margin-top:10px">
+                ☁️ Hesabınız bulut üzerinden bilgisayar, tablet ve telefonlarınızda otomatik senkronize olur.
+              </p>
               ${!this.isGuest() ? '<button class="btn btn-ghost" style="width:100%;margin-top:8px;color:var(--red-600)" onclick="Auth.logout()">Çıkış Yap (Misafir Moduna Dön)</button>' : ''}
             </div>
 
@@ -318,7 +525,7 @@ const Auth = {
             <!-- 3. Yedekle & Senkronize Et Paneli -->
             <div id="auth-tab-sync" class="auth-tab-content hidden">
               <p style="font-size:.82rem;color:var(--gray-600);margin-bottom:14px;line-height:1.5">
-                Ezberlediğiniz tüm ayetleri, yer imlerinizi ve okuma geçmişinizi diğer telefon, tablet veya bilgisayarlarınıza kolayca aktarabilirsiniz.
+                Ezberlediğiniz tüm ayetleri, yer imlerinizi ve benzer ayet listelerinizi dosya olarak da yedekleyebilirsiniz.
               </p>
               <div style="display:flex;flex-direction:column;gap:10px">
                 <button class="btn btn-success" onclick="Auth.exportBackup()" style="width:100%;padding:12px">
@@ -367,8 +574,8 @@ const Auth = {
 
   updateModalStats() {
     $('modal-user-name').textContent = this._activeUser.name;
-    $('modal-user-status').textContent = this.isGuest() ? 'Misafir Profili' : 'Kayıtlı Kullanıcı';
-    
+    $('modal-user-status').textContent = this.isGuest() ? 'Misafir Profili' : '☁️ Canlı Bulut Senkronizasyonu Aktif';
+
     if (typeof Memorized !== 'undefined') {
       $('auth-stat-mem').textContent = Memorized.count();
     }
@@ -401,27 +608,47 @@ const Auth = {
     });
   },
 
-  handleLoginBtn() {
-    const u = $('auth-username').value;
-    const p = $('auth-password').value;
-    const res = this.login(u, p);
-    if (res.success) {
-      this.closeAuthModal();
-    } else {
-      if (typeof showToast === 'function') showToast(res.message, 'error');
-      else alert(res.message);
+  async handleLoginBtn() {
+    const uInput = $('auth-username');
+    const pInput = $('auth-password');
+    const btn = $('btn-auth-login');
+    const origText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Giriş yapılıyor...';
+
+    try {
+      const res = await this.login(uInput.value, pInput.value);
+      if (res.success) {
+        this.closeAuthModal();
+      } else {
+        if (typeof showToast === 'function') showToast(res.message, 'error');
+        else alert(res.message);
+      }
+    } finally {
+      btn.disabled = false;
+      btn.textContent = origText;
     }
   },
 
-  handleRegisterBtn() {
-    const u = $('auth-username').value;
-    const p = $('auth-password').value;
-    const res = this.register(u, p);
-    if (res.success) {
-      this.closeAuthModal();
-    } else {
-      if (typeof showToast === 'function') showToast(res.message, 'error');
-      else alert(res.message);
+  async handleRegisterBtn() {
+    const uInput = $('auth-username');
+    const pInput = $('auth-password');
+    const btn = $('btn-auth-register');
+    const origText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Kaydediliyor...';
+
+    try {
+      const res = await this.register(uInput.value, pInput.value);
+      if (res.success) {
+        this.closeAuthModal();
+      } else {
+        if (typeof showToast === 'function') showToast(res.message, 'error');
+        else alert(res.message);
+      }
+    } finally {
+      btn.disabled = false;
+      btn.textContent = origText;
     }
   },
 

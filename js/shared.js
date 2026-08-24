@@ -27,10 +27,10 @@ const Memorized = {
     try {
       const arr = [...this._set];
       localStorage.setItem(getUserKey('memorized'), JSON.stringify(arr));
-      localStorage.setItem('huffaz_memorized_v1', JSON.stringify(arr));
       if (typeof Auth !== 'undefined' && Auth._activeUser && Auth._activeUser.data) {
         Auth._activeUser.data.memorized = arr;
         Auth.saveUsers();
+        if (Auth.pushCloudSync) Auth.pushCloudSync();
       }
     } catch {}
   },
@@ -53,7 +53,6 @@ const Bookmarks = {
     try {
       const k = getUserKey('bookmarks');
       let raw = localStorage.getItem(k);
-      if (!raw) raw = localStorage.getItem('huffaz_bookmarks_v1');
       this._list = raw ? JSON.parse(raw) : [];
     } catch { this._list = []; }
     return this;
@@ -61,10 +60,10 @@ const Bookmarks = {
   save() {
     try {
       localStorage.setItem(getUserKey('bookmarks'), JSON.stringify(this._list));
-      localStorage.setItem('huffaz_bookmarks_v1', JSON.stringify(this._list));
       if (typeof Auth !== 'undefined' && Auth._activeUser && Auth._activeUser.data) {
         Auth._activeUser.data.bookmarks = this._list;
         Auth.saveUsers();
+        if (Auth.pushCloudSync) Auth.pushCloudSync();
       }
     } catch {}
   },
@@ -94,14 +93,14 @@ const Bookmarks = {
 const LastPage = {
   get()  {
     const k = getUserKey('last_page');
-    return parseInt(localStorage.getItem(k)) || parseInt(localStorage.getItem('huffaz_last_page')) || 1;
+    return parseInt(localStorage.getItem(k)) || 1;
   },
   set(n) {
     localStorage.setItem(getUserKey('last_page'), n);
-    localStorage.setItem('huffaz_last_page', n);
     if (typeof Auth !== 'undefined' && Auth._activeUser && Auth._activeUser.data) {
       Auth._activeUser.data.lastPage = n;
       Auth.saveUsers();
+      if (Auth.pushCloudSync) Auth.pushCloudSync();
     }
   },
 };
@@ -261,6 +260,7 @@ const SimilarLists = {
       if (typeof Auth !== 'undefined' && Auth._activeUser && Auth._activeUser.data) {
         Auth._activeUser.data.similarLists = this._lists;
         Auth.saveUsers();
+        if (Auth.pushCloudSync) Auth.pushCloudSync();
       }
     } catch (e) {
       console.error('SimilarLists kaydetme hatası:', e);
