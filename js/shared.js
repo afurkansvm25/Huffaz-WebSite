@@ -17,8 +17,6 @@ const Memorized = {
     try {
       const k = getUserKey('memorized');
       let raw = localStorage.getItem(k);
-      // Geriye dönük uyumluluk: eğer kullanıcı anahtarında yoksa genel anahtardan al
-      if (!raw) raw = localStorage.getItem('huffaz_memorized_v1');
       this._set = new Set(raw ? JSON.parse(raw) : []);
     } catch { this._set = new Set(); }
     return this;
@@ -27,10 +25,8 @@ const Memorized = {
     try {
       const arr = [...this._set];
       localStorage.setItem(getUserKey('memorized'), JSON.stringify(arr));
-      if (typeof Auth !== 'undefined' && Auth._activeUser && Auth._activeUser.data) {
-        Auth._activeUser.data.memorized = arr;
-        Auth.saveUsers();
-        if (Auth.pushCloudSync) Auth.pushCloudSync();
+      if (typeof Auth !== 'undefined' && Auth.pushCloudData) {
+        Auth.pushCloudData();
       }
     } catch {}
   },
@@ -60,10 +56,8 @@ const Bookmarks = {
   save() {
     try {
       localStorage.setItem(getUserKey('bookmarks'), JSON.stringify(this._list));
-      if (typeof Auth !== 'undefined' && Auth._activeUser && Auth._activeUser.data) {
-        Auth._activeUser.data.bookmarks = this._list;
-        Auth.saveUsers();
-        if (Auth.pushCloudSync) Auth.pushCloudSync();
+      if (typeof Auth !== 'undefined' && Auth.pushCloudData) {
+        Auth.pushCloudData();
       }
     } catch {}
   },
@@ -97,10 +91,8 @@ const LastPage = {
   },
   set(n) {
     localStorage.setItem(getUserKey('last_page'), n);
-    if (typeof Auth !== 'undefined' && Auth._activeUser && Auth._activeUser.data) {
-      Auth._activeUser.data.lastPage = n;
-      Auth.saveUsers();
-      if (Auth.pushCloudSync) Auth.pushCloudSync();
+    if (typeof Auth !== 'undefined' && Auth.pushCloudData) {
+      Auth.pushCloudData();
     }
   },
 };
@@ -257,10 +249,8 @@ const SimilarLists = {
   save() {
     try {
       localStorage.setItem(getUserKey('similar_lists'), JSON.stringify(this._lists));
-      if (typeof Auth !== 'undefined' && Auth._activeUser && Auth._activeUser.data) {
-        Auth._activeUser.data.similarLists = this._lists;
-        Auth.saveUsers();
-        if (Auth.pushCloudSync) Auth.pushCloudSync();
+      if (typeof Auth !== 'undefined' && Auth.pushCloudData) {
+        Auth.pushCloudData();
       }
     } catch (e) {
       console.error('SimilarLists kaydetme hatası:', e);

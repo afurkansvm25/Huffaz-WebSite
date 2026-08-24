@@ -1,320 +1,313 @@
 /* ================================================================
-   auth.js — Huffaz Kullanıcı Hesap Sistemi ve Cihazlar Arası Senkronizasyon (v5)
-   Tüm sayfalarda kullanıcı bazlı veri yönetimi, zorunlu şifre güvenliği ve
-   1-tıkla cihazlar arası (Bilgisayar, Tablet, Telefon) kusursuz aktarım sağlar.
+   auth.js — Huffaz Firebase Yetkilendirme ve Gerçek Zamanlı Senkronizasyon
+   Firebase Auth ve Cloud entegrasyonu ile cihazlar arası (Bilgisayar, Tablet, Telefon)
+   kesintisiz oturum yönetimi ve veri senkronizasyonu sağlar.
 ================================================================ */
 'use strict';
 
 const Auth = {
-  LS_USERS: 'huffaz_accounts_v5',
+  FIREBASE_CONFIG: {
+    apiKey: "AIzaSyA-Sb9pIW8Di2PjK8YMjnOUsOVDxxx-KNk",
+    authDomain: "huffaz-f3d06.firebaseapp.com",
+    projectId: "huffaz-f3d06",
+    storageBucket: "huffaz-f3d06.firebasestorage.app",
+    messagingSenderId: "560140356389",
+    appId: "1:560140356389:web:f57ea51dd799943e5028cc"
+  },
+
   LS_ACTIVE_USER: 'huffaz_active_user_id_v5',
+  _currentUser: null,
+  _initialized: false,
+  _fbAuth: null,
+  _fbDb: null,
 
-  _users: {},
-  _activeUser: null,
+  async init() {
+    // 1. Firebase SDK'larını dinamik ve güvenli olarak yükle
+    await this.loadFirebaseSDK();
 
-  init() {
-    // Önceki tüm yerel hesap ve test verilerini temizle (Kullanıcı talebi)
+    // 2. Firebase App başlat
     try {
-      [
-        'huffaz_accounts_v1', 'huffaz_accounts_v2', 'huffaz_accounts_v3', 'huffaz_accounts_v4',
-        'huffaz_active_user_id', 'huffaz_active_user_id_v2', 'huffaz_active_user_id_v3', 'huffaz_active_user_id_v4',
-        'huffaz_similar_lists_v1', 'huffaz_memorized_v1', 'huffaz_bookmarks_v1'
-      ].forEach(k => {
-        if (localStorage.getItem(k)) localStorage.removeItem(k);
-      });
-    } catch (e) {
-      console.warn('Storage cleanup error:', e);
+      if (typeof firebase !== 'undefined') {
+        if (!firebase.apps.length) {
+          firebase.initializeApp(this.FIREBASE_CONFIG);
+        }
+        this._fbAuth = firebase.auth();
+        try {
+          this._fbDb = firebase.firestore();
+        } catch (e) {
+          console.warn('Firestore initialization optional:', e);
+        }
+
+        // Oturum durum dinleyicisi (Tüm cihazlarda otomatik tanıma)
+        this._fbAuth.onAuthStateChanged((user) => {
+          this.handleAuthStateChange(user);
+        });
+      }
+    } catch (err) {
+      console.error('Firebase başlatma hatası:', err);
     }
 
-    this.loadUsers();
-    this.loadActiveUser();
-    this.checkUrlSync();
     this.injectAuthUI();
   },
 
-  loadUsers() {
-    try {
-      const raw = localStorage.getItem(this.LS_USERS);
-      this._users = raw ? JSON.parse(raw) : {};
-    } catch {
-      this._users = {};
-    }
+  // ── Firebase CDN Scriptlerini Sırayla Yükle ──
+  loadFirebaseSDK() {
+    return new Promise((resolve) => {
+      if (typeof firebase !== 'undefined' && firebase.auth) {
+        resolve();
+        return;
+      }
 
-    // Varsayılan misafir kullanıcı
-    if (!this._users['guest']) {
-      this._users['guest'] = {
-        id: 'guest',
-        name: 'Misafir Kullanıcı',
-        password: '',
-        createdAt: Date.now(),
-        data: {
-          memorized: [],
-          bookmarks: [],
-          lastPage: 1,
-          spreadMode: 'single',
-          testScore: { total: 0, correct: 0 },
-          similarLists: []
+      const scripts = [
+        'https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js',
+        'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js',
+        'https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js'
+      ];
+
+      let loadedCount = 0;
+      scripts.forEach(src => {
+        if (document.querySelector(`script[src="${src}"]`)) {
+          loadedCount++;
+          if (loadedCount === scripts.length) resolve();
+          return;
         }
-      };
-      this.saveUsers();
-    }
+
+        const s = document.createElement('script');
+        s.src = src;
+        s.async = false;
+        s.onload = () => {
+          loadedCount++;
+          if (loadedCount === scripts.length) resolve();
+        };
+        s.onerror = () => {
+          loadedCount++;
+          if (loadedCount === scripts.length) resolve();
+        };
+        document.head.appendChild(s);
+      });
+    });
   },
 
-  saveUsers() {
-    try {
-      localStorage.setItem(this.LS_USERS, JSON.stringify(this._users));
-    } catch (e) {
-      console.error('Kullanıcı verisi kaydedilemedi:', e);
-    }
+  // ── Kullanıcı adı -> E-posta Dönüştürücü (Kullanıcı isterse direkt e-posta veya sadece isim girebilir) ──
+  formatEmail(identifier) {
+    identifier = (identifier || '').trim();
+    if (identifier.includes('@')) return identifier;
+    const clean = identifier.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    return `${clean}@huffaz.app`;
   },
 
-  loadActiveUser() {
-    const activeId = localStorage.getItem(this.LS_ACTIVE_USER) || 'guest';
-    this._activeUser = this._users[activeId] || this._users['guest'];
+  getUserDisplayName(user) {
+    if (!user) return 'Misafir Kullanıcı';
+    if (user.displayName) return user.displayName;
+    if (user.email) {
+      const prefix = user.email.split('@')[0];
+      return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+    }
+    return 'Kullanıcı';
   },
 
   getActiveUser() {
-    return this._activeUser;
+    if (!this._currentUser) {
+      return { id: 'guest', name: 'Misafir Kullanıcı' };
+    }
+    return {
+      id: this._currentUser.uid,
+      name: this.getUserDisplayName(this._currentUser),
+      email: this._currentUser.email
+    };
   },
 
   isGuest() {
-    return !this._activeUser || this._activeUser.id === 'guest';
+    return !this._currentUser;
   },
 
-  // ── URL Üzerinden 1-Tıkla Otomatik Cihaz Senkronizasyonu Kontrolü ──
-  checkUrlSync() {
+  // ── Firebase Oturum Durumu Değiştiğinde ──
+  async handleAuthStateChange(user) {
+    this._currentUser = user;
+    if (user) {
+      localStorage.setItem(this.LS_ACTIVE_USER, user.uid);
+      await this.pullCloudData(user);
+    } else {
+      localStorage.setItem(this.LS_ACTIVE_USER, 'guest');
+    }
+
+    this.updateHeaderBadge();
+    this.updateModalStats();
+
+    // Veri modüllerini yenile
+    if (typeof Memorized !== 'undefined' && Memorized.load) Memorized.load();
+    if (typeof Bookmarks !== 'undefined' && Bookmarks.load) Bookmarks.load();
+    if (typeof SimilarLists !== 'undefined' && SimilarLists.load) SimilarLists.load();
+  },
+
+  // ── Buluttan Kullanıcı Verilerini Çek ──
+  async pullCloudData(user) {
+    if (!user || !this._fbDb) return;
     try {
-      const params = new URLSearchParams(location.search);
-      const syncToken = params.get('sync');
-      if (syncToken) {
-        const jsonStr = decodeURIComponent(escape(atob(syncToken)));
-        const syncData = JSON.parse(jsonStr);
-        if (syncData && syncData.id && syncData.data) {
-          this._users[syncData.id] = syncData;
-          this.saveUsers();
-          this.switchUser(syncData.id);
-
-          // URL'deki sync parametresini temizle
-          params.delete('sync');
-          const cleanUrl = location.pathname + (params.toString() ? '?' + params.toString() : '');
-          history.replaceState(null, '', cleanUrl);
-
-          setTimeout(() => {
-            if (typeof showToast === 'function') {
-              showToast(`✅ ${syncData.name} hesabı ve tüm ezberleriniz bu cihaza başarıyla aktarıldı!`, 'success');
-            }
-          }, 300);
+      const doc = await this._fbDb.collection('users').doc(user.uid).get();
+      if (doc.exists) {
+        const data = doc.data();
+        if (data.memorized && Array.isArray(data.memorized)) {
+          localStorage.setItem(`huffaz_${user.uid}_memorized`, JSON.stringify(data.memorized));
+        }
+        if (data.bookmarks && Array.isArray(data.bookmarks)) {
+          localStorage.setItem(`huffaz_${user.uid}_bookmarks`, JSON.stringify(data.bookmarks));
+        }
+        if (data.similarLists && Array.isArray(data.similarLists)) {
+          localStorage.setItem(`huffaz_${user.uid}_similar_lists`, JSON.stringify(data.similarLists));
+        }
+        if (data.lastPage) {
+          localStorage.setItem(`huffaz_${user.uid}_last_page`, String(data.lastPage));
         }
       }
-    } catch (err) {
-      console.warn('URL sync okunamadı:', err);
+    } catch (e) {
+      console.warn('Bulut verisi çekilirken uyarı:', e);
     }
   },
 
-  // ── Yeni Kayıt Ol (Şifre Zorunlu) ──
-  register(username, password) {
-    username = (username || '').trim();
-    if (!username) return { success: false, message: '⚠️ Kullanıcı adı boş olamaz.' };
-    const id = username.toLowerCase().replace(/[^a-z0-9_]/g, '');
-    if (!id) return { success: false, message: '⚠️ Lütfen geçerli bir kullanıcı adı girin.' };
+  // ── Buluta Kullanıcı Verilerini Kaydet (Auto-Sync) ──
+  async pushCloudData() {
+    if (!this._currentUser || !this._fbDb) return;
+    try {
+      const uid = this._currentUser.uid;
+      const memorized = JSON.parse(localStorage.getItem(`huffaz_${uid}_memorized`) || '[]');
+      const bookmarks = JSON.parse(localStorage.getItem(`huffaz_${uid}_bookmarks`) || '[]');
+      const similarLists = JSON.parse(localStorage.getItem(`huffaz_${uid}_similar_lists`) || '[]');
+      const lastPage = parseInt(localStorage.getItem(`huffaz_${uid}_last_page`) || '1') || 1;
 
-    // Şifre zorunluluk kontrolü
+      await this._fbDb.collection('users').doc(uid).set({
+        username: this.getUserDisplayName(this._currentUser),
+        email: this._currentUser.email,
+        memorized,
+        bookmarks,
+        similarLists,
+        lastPage,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } catch (e) {
+      console.warn('Buluta veri kaydedilirken uyarı:', e);
+    }
+  },
+
+  // ── Kayıt Ol (Firebase Auth) ──
+  async register(identifier, password) {
+    if (!this._fbAuth) return { success: false, message: 'Firebase henüz yüklenmedi, lütfen bekleyin.' };
+    identifier = (identifier || '').trim();
+    if (!identifier) return { success: false, message: '⚠️ Lütfen kullanıcı adı veya e-posta girin.' };
+    
     if (!password || password.trim().length === 0) {
-      return { success: false, message: '⚠️ Şifre alanı boş bırakılamaz. Lütfen bir şifre / PIN belirleyin.' };
+      return { success: false, message: '⚠️ Şifre alanı boş bırakılamaz. Lütfen bir şifre belirleyin.' };
     }
-    if (password.trim().length < 3) {
-      return { success: false, message: '⚠️ Şifreniz en az 3 karakterden oluşmalıdır.' };
-    }
-
-    // Benzersiz kullanıcı adı kontrolü
-    if (this._users[id]) {
-      return {
-        success: false,
-        message: `⚠️ "${username}" kullanıcı adı bu cihazda zaten kayıtlı! Lütfen "Giriş Yap" sekmesini kullanın veya farklı bir isim belirleyin.`
-      };
+    if (password.trim().length < 6) {
+      return { success: false, message: '⚠️ Güvenliğiniz için şifre en az 6 karakterden oluşmalıdır.' };
     }
 
-    // Mevcut aktif kullanıcının verilerini yeni hesaba aktar
-    const initialData = this._activeUser ? JSON.parse(JSON.stringify(this._activeUser.data)) : {
-      memorized: [],
-      bookmarks: [],
-      lastPage: 1,
-      spreadMode: 'single',
-      testScore: { total: 0, correct: 0 },
-      similarLists: []
-    };
+    const email = this.formatEmail(identifier);
+    const displayName = identifier.includes('@') ? identifier.split('@')[0] : identifier;
 
-    const newUser = {
-      id,
-      name: username,
-      password: password.trim(),
-      createdAt: Date.now(),
-      data: initialData
-    };
-
-    this._users[id] = newUser;
-    this.saveUsers();
-    this.switchUser(id);
-    return { success: true, message: `Hoş geldiniz, ${username}! Hesabınız oluşturuldu.` };
+    try {
+      const userCredential = await this._fbAuth.createUserWithEmailAndPassword(email, password.trim());
+      await userCredential.user.updateProfile({ displayName });
+      this.closeAuthModal();
+      if (typeof showToast === 'function') {
+        showToast(`✅ Hoş geldiniz, ${displayName}! Hesabınız oluşturuldu.`, 'success');
+      }
+      setTimeout(() => location.reload(), 300);
+      return { success: true, message: 'Kayıt başarılı!' };
+    } catch (err) {
+      let msg = err.message;
+      if (err.code === 'auth/email-already-in-use') {
+        msg = `⚠️ Bu kullanıcı adı / e-posta zaten kayıtlı. Lütfen "Giriş Yap" sekmesini kullanın.`;
+      } else if (err.code === 'auth/weak-password') {
+        msg = '⚠️ Şifre çok zayıf. Lütfen en az 6 karakterli bir şifre seçin.';
+      } else if (err.code === 'auth/invalid-email') {
+        msg = '⚠️ Geçersiz kullanıcı adı veya e-posta formatı.';
+      }
+      return { success: false, message: msg };
+    }
   },
 
-  // ── Giriş Yap ──
-  login(username, password) {
-    username = (username || '').trim();
-    const id = username.toLowerCase().replace(/[^a-z0-9_]/g, '');
-    if (!id) return { success: false, message: 'Lütfen kullanıcı adınızı girin.' };
+  // ── Giriş Yap (Firebase Auth) ──
+  async login(identifier, password) {
+    if (!this._fbAuth) return { success: false, message: 'Firebase henüz yüklenmedi, lütfen bekleyin.' };
+    identifier = (identifier || '').trim();
+    if (!identifier) return { success: false, message: 'Lütfen kullanıcı adınızı veya e-postanızı girin.' };
+    if (!password) return { success: false, message: 'Lütfen şifrenizi girin.' };
 
-    const user = this._users[id];
-    if (!user) {
-      return {
-        success: false,
-        message: `⚠️ "${username}" adında bir hesap bu cihazda henüz bulunamadı. Başka bir cihazdan hesabınızı aktarmak için "Cihaz Eşleme / Senkronizasyon" özelliğini kullanabilirsiniz.`
-      };
+    const email = this.formatEmail(identifier);
+
+    try {
+      const userCredential = await this._fbAuth.signInWithEmailAndPassword(email, password.trim());
+      const name = this.getUserDisplayName(userCredential.user);
+      this.closeAuthModal();
+      if (typeof showToast === 'function') {
+        showToast(`✅ Giriş yapıldı: ${name}`, 'success');
+      }
+      setTimeout(() => location.reload(), 300);
+      return { success: true, message: 'Giriş yapıldı!' };
+    } catch (err) {
+      let msg = err.message;
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        msg = '⚠️ Kullanıcı adı / e-posta veya şifre hatalı.';
+      } else if (err.code === 'auth/wrong-password') {
+        msg = '⚠️ Şifre hatalı. Lütfen tekrar deneyin.';
+      }
+      return { success: false, message: msg };
     }
-
-    if (user.password && user.password !== (password || '').trim()) {
-      return { success: false, message: '⚠️ Şifre hatalı. Lütfen tekrar deneyin.' };
-    }
-
-    this.switchUser(id);
-    return { success: true, message: `Giriş yapıldı: ${user.name}` };
   },
 
-  changePassword(oldPw, newPw, confirmPw) {
+  // ── Şifre Değiştir (Firebase Auth) ──
+  async changePassword(oldPw, newPw, confirmPw) {
     if (this.isGuest()) {
-      return { success: false, message: 'Misafir modunda şifre değiştirilemez. Lütfen önce bir hesap oluşturun veya giriş yapın.' };
+      return { success: false, message: 'Misafir modunda şifre değiştirilemez. Lütfen önce giriş yapın.' };
     }
-    if (this._activeUser.password && this._activeUser.password !== oldPw) {
-      return { success: false, message: 'Mevcut şifre hatalı.' };
-    }
-    if (!newPw || newPw.trim().length === 0) {
-      return { success: false, message: 'Yeni şifre boş olamaz.' };
-    }
-    if (newPw.trim().length < 3) {
-      return { success: false, message: 'Yeni şifre en az 3 karakter olmalıdır.' };
+    if (!newPw || newPw.trim().length < 6) {
+      return { success: false, message: 'Yeni şifre en az 6 karakter olmalıdır.' };
     }
     if (newPw !== confirmPw) {
       return { success: false, message: 'Yeni şifreler birbiriyle eşleşmiyor.' };
     }
-    this._activeUser.password = newPw.trim();
-    this._users[this._activeUser.id] = this._activeUser;
-    this.saveUsers();
-    return { success: true, message: 'Şifreniz başarıyla güncellendi!' };
-  },
 
-  logout() {
-    this.switchUser('guest');
-  },
-
-  switchUser(userId) {
-    if (!this._users[userId]) return;
-    this._activeUser = this._users[userId];
-    localStorage.setItem(this.LS_ACTIVE_USER, userId);
-
-    // Memorized, Bookmarks ve SimilarLists'i yeni kullanıcıya göre yeniden yükle
-    if (typeof Memorized !== 'undefined' && Memorized.load) Memorized.load();
-    if (typeof Bookmarks !== 'undefined' && Bookmarks.load) Bookmarks.load();
-    if (typeof SimilarLists !== 'undefined' && SimilarLists.load) SimilarLists.load();
-
-    this.updateHeaderBadge();
-    if (typeof showToast === 'function') {
-      showToast(`Aktif Profil: ${this._activeUser.name}`, 'success');
-    }
-    setTimeout(() => location.reload(), 400);
-  },
-
-  // ── 1-Tıkla Senkronizasyon Linki Üretici ──
-  generateSyncLink() {
-    if (this.isGuest()) {
-      alert('Lütfen önce bir hesap açın veya giriş yapın.');
-      return '';
-    }
-    const payload = JSON.stringify(this._activeUser);
-    const b64 = btoa(unescape(encodeURIComponent(payload)));
-    
-    // Ana sayfa URL'si
-    let baseUrl = location.href.split('?')[0].split('#')[0];
-    if (baseUrl.includes('/pages/')) {
-      baseUrl = baseUrl.replace(/\/pages\/[^/]+$/, '/index.html');
-    }
-    return `${baseUrl}?sync=${b64}`;
-  },
-
-  // ── Cihaz Eşleme Kodu Al (Metin Kodu Olarak) ──
-  getSyncCode() {
-    if (this.isGuest()) return '';
-    const payload = JSON.stringify(this._activeUser);
-    return btoa(unescape(encodeURIComponent(payload)));
-  },
-
-  // ── Cihaz Eşleme Kodu Yükle (Yapıştırılan Kodla Giriş) ──
-  importSyncCode(codeStr) {
     try {
-      codeStr = (codeStr || '').trim();
-      if (!codeStr) return { success: false, message: 'Lütfen eşleme kodunu yapıştırın.' };
-      const jsonStr = decodeURIComponent(escape(atob(codeStr)));
-      const syncData = JSON.parse(jsonStr);
-      if (!syncData || !syncData.id || !syncData.data) {
-        return { success: false, message: 'Geçersiz eşleme kodu.' };
-      }
-      this._users[syncData.id] = syncData;
-      this.saveUsers();
-      this.switchUser(syncData.id);
-      return { success: true, message: `✅ ${syncData.name} hesabı başarıyla bu cihaza senkronize edildi!` };
+      const user = this._fbAuth.currentUser;
+      const credential = firebase.auth.EmailAuthProvider.credential(user.email, oldPw);
+      await user.reauthenticateWithCredential(credential);
+      await user.updatePassword(newPw.trim());
+      return { success: true, message: 'Şifreniz başarıyla güncellendi!' };
     } catch (err) {
-      return { success: false, message: 'Kod çözülürken hata oluştu: ' + err.message };
+      let msg = err.message;
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        msg = 'Mevcut şifreniz hatalı.';
+      }
+      return { success: false, message: msg };
     }
   },
 
-  // ── Dosya Olarak Yedek Dışa Aktar ──
-  exportBackup() {
-    const backup = {
-      appName: 'Huffaz',
-      version: '5.0',
-      exportedAt: new Date().toISOString(),
-      user: this._activeUser
-    };
-    const str = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(backup, null, 2));
-    const dl = document.createElement('a');
-    dl.setAttribute('href', str);
-    dl.setAttribute('download', `huffaz_yedek_${this._activeUser.id}_${new Date().toISOString().slice(0,10)}.json`);
-    dl.click();
-    if (typeof showToast === 'function') showToast('📥 Yedek dosyası indirildi!', 'success');
-  },
-
-  // ── Dosya Olarak Yedek İçe Aktar ──
-  importBackup(fileContent) {
-    try {
-      const parsed = JSON.parse(fileContent);
-      const u = parsed.user || parsed;
-      if (!u || !u.id || !u.data) {
-        return { success: false, message: 'Geçersiz Huffaz yedek dosyası.' };
-      }
-      this._users[u.id] = u;
-      this.saveUsers();
-      this.switchUser(u.id);
-      return { success: true, message: `✅ ${u.name} hesabı başarıyla yüklendi!` };
-    } catch (err) {
-      return { success: false, message: 'Dosya okunurken hata oluştu: ' + err.message };
+  // ── Çıkış Yap ──
+  async logout() {
+    if (this._fbAuth) {
+      await this._fbAuth.signOut();
     }
+    localStorage.setItem(this.LS_ACTIVE_USER, 'guest');
+    this.closeAuthModal();
+    if (typeof showToast === 'function') showToast('Çıkış yapıldı. Misafir moduna geçildi.', 'info');
+    setTimeout(() => location.reload(), 300);
   },
 
   // ── UI Enjeksiyonu ──
   injectAuthUI() {
-    // Header sağ kısmına profil butonu ekle
     const appBars = document.querySelectorAll('.app-bar');
     appBars.forEach(bar => {
       if (!bar.querySelector('.auth-header-btn')) {
         const btn = document.createElement('button');
         btn.className = 'app-bar-btn auth-header-btn';
         btn.style.marginLeft = 'auto';
-        btn.innerHTML = `<span class="auth-btn-icon">👤</span> <span class="auth-btn-name">${this._activeUser.name}</span>`;
+        btn.innerHTML = `<span class="auth-btn-icon">👤</span> <span class="auth-btn-name">${this.getUserDisplayName(this._currentUser)}</span>`;
         btn.addEventListener('click', () => this.openAuthModal());
         bar.appendChild(btn);
       }
     });
 
-    // Modal HTML'ini sayfaya ekle
     if (!document.getElementById('auth-modal-overlay')) {
       const modal = document.createElement('div');
       modal.id = 'auth-modal-overlay';
@@ -324,7 +317,7 @@ const Auth = {
           <div class="auth-modal-header">
             <div style="display:flex;align-items:center;gap:8px">
               <span style="font-size:1.4rem">👤</span>
-              <h3 id="auth-modal-title">Kişisel Hesap & Senkronizasyon</h3>
+              <h3 id="auth-modal-title">Kişisel Hesap & Firebase Bulut Senkronizasyonu</h3>
             </div>
             <button class="auth-modal-close" onclick="Auth.closeAuthModal()">✕</button>
           </div>
@@ -334,9 +327,9 @@ const Auth = {
             <div class="auth-profile-box">
               <div class="auth-avatar">☪</div>
               <div style="flex:1">
-                <div class="auth-profile-name" id="modal-user-name">${this._activeUser.name}</div>
+                <div class="auth-profile-name" id="modal-user-name">${this.getUserDisplayName(this._currentUser)}</div>
                 <div class="auth-profile-status" id="modal-user-status">
-                  ${this.isGuest() ? 'Misafir Modu' : 'Kayıtlı Profil'}
+                  ${this.isGuest() ? 'Misafir Modu' : '🔥 Firebase ile Bağlı'}
                 </div>
               </div>
             </div>
@@ -360,20 +353,18 @@ const Auth = {
             <!-- İşlem Sekmeleri -->
             <div class="auth-tabs">
               <button class="auth-tab active" data-tab="login" onclick="Auth.setModalTab('login')">Giriş / Kayıt</button>
-              <button class="auth-tab" data-tab="sync" onclick="Auth.setModalTab('sync')">📲 Cihaz Eşleme (Senkron)</button>
               <button class="auth-tab" data-tab="password" onclick="Auth.setModalTab('password')">🔑 Şifre Değiştir</button>
-              <button class="auth-tab" data-tab="profiles" onclick="Auth.setModalTab('profiles')">👥 Profiller</button>
             </div>
 
             <!-- 1. Giriş / Kayıt Paneli -->
             <div id="auth-tab-login" class="auth-tab-content active">
               <div class="auth-input-group">
-                <label for="auth-username">Kullanıcı Adı:</label>
+                <label for="auth-username">Kullanıcı Adı veya E-posta:</label>
                 <input id="auth-username" type="text" class="auth-field" placeholder="Örn: Ahmet veya Furkan">
               </div>
               <div class="auth-input-group">
-                <label for="auth-password">Şifre / PIN <span style="color:var(--red-600);font-weight:700">* (Zorunlu)</span>:</label>
-                <input id="auth-password" type="password" class="auth-field" placeholder="En az 3 karakterli şifreniz">
+                <label for="auth-password">Şifre <span style="color:var(--red-600);font-weight:700">* (Zorunlu, en az 6 karakter)</span>:</label>
+                <input id="auth-password" type="password" class="auth-field" placeholder="En az 6 karakterli şifreniz">
               </div>
               <div style="display:flex;gap:10px;margin-top:14px">
                 <button id="btn-auth-login" class="btn btn-primary" style="flex:1" onclick="Auth.handleLoginBtn()">Giriş Yap</button>
@@ -382,40 +373,7 @@ const Auth = {
               ${!this.isGuest() ? '<button class="btn btn-ghost" style="width:100%;margin-top:8px;color:var(--red-600)" onclick="Auth.logout()">Çıkış Yap (Misafir Moduna Dön)</button>' : ''}
             </div>
 
-            <!-- 2. Cihaz Eşleme & Senkronizasyon Paneli (1-Tıkla Aktarım) -->
-            <div id="auth-tab-sync" class="auth-tab-content hidden">
-              <div style="background:var(--green-50);border:1px solid var(--green-200);border-radius:var(--r-m);padding:14px;margin-bottom:14px">
-                <div style="font-weight:800;color:var(--green-950);margin-bottom:4px;font-size:.92rem">
-                  🔗 1-Tıkla Tablet / Telefon Senkronizasyonu
-                </div>
-                <p style="font-size:.82rem;color:var(--gray-600);line-height:1.5;margin-bottom:10px">
-                  Bilgisayardaki tüm ezber ve benzer ayet listelerinizi tabletinize veya telefonunuza anında aktarın:
-                </p>
-                <button class="btn btn-primary" style="width:100%;padding:11px;font-weight:700" onclick="Auth.handleCopySyncLink()">
-                  📋 Senkronizasyon Linkini Kopyala
-                </button>
-              </div>
-
-              <div style="border-top:1px dashed var(--gray-200);padding-top:14px">
-                <div style="font-weight:700;font-size:.85rem;color:var(--gray-800);margin-bottom:8px">
-                  📥 Eşleme Kodu ile Giriş Yap (Tablette Yapıştırın):
-                </div>
-                <div style="display:flex;gap:8px">
-                  <input id="input-sync-code" type="text" class="auth-field" placeholder="Eşleme kodunu buraya yapıştırın..." style="font-size:.82rem">
-                  <button class="btn btn-gold" style="white-space:nowrap;padding:8px 14px" onclick="Auth.handleApplySyncCode()">Aktar</button>
-                </div>
-              </div>
-
-              <div style="display:flex;gap:10px;margin-top:14px">
-                <button class="btn btn-sm btn-outline" style="flex:1" onclick="Auth.exportBackup()">📁 Dosya Olarak İndir</button>
-                <label class="btn btn-sm btn-outline" style="flex:1;text-align:center;cursor:pointer">
-                  📁 Dosyadan Yükle
-                  <input type="file" id="auth-import-file" accept=".json" style="display:none" onchange="Auth.handleImportFile(event)">
-                </label>
-              </div>
-            </div>
-
-            <!-- 3. Şifre Değiştir Paneli -->
+            <!-- 2. Şifre Değiştir Paneli -->
             <div id="auth-tab-password" class="auth-tab-content hidden">
               <div class="auth-input-group">
                 <label for="auth-old-pw">Mevcut Şifre:</label>
@@ -423,7 +381,7 @@ const Auth = {
               </div>
               <div class="auth-input-group">
                 <label for="auth-new-pw">Yeni Şifre:</label>
-                <input id="auth-new-pw" type="password" class="auth-field" placeholder="Yeni şifreniz (En az 3 karakter)">
+                <input id="auth-new-pw" type="password" class="auth-field" placeholder="Yeni şifreniz (En az 6 karakter)">
               </div>
               <div class="auth-input-group">
                 <label for="auth-new-pw2">Yeni Şifre (Tekrar):</label>
@@ -432,11 +390,6 @@ const Auth = {
               <button class="btn btn-primary" style="width:100%;margin-top:10px;padding:11px" onclick="Auth.handleChangePasswordBtn()">
                 💾 Şifreyi Güncelle
               </button>
-            </div>
-
-            <!-- 4. Profiller Listesi -->
-            <div id="auth-tab-profiles" class="auth-tab-content hidden">
-              <div id="auth-profiles-list" class="auth-profiles-list"></div>
             </div>
 
           </div>
@@ -449,13 +402,12 @@ const Auth = {
   updateHeaderBadge() {
     const badgeNames = document.querySelectorAll('.auth-btn-name');
     badgeNames.forEach(span => {
-      span.textContent = this._activeUser.name;
+      span.textContent = this.getUserDisplayName(this._currentUser);
     });
   },
 
   openAuthModal() {
     this.updateModalStats();
-    this.renderProfilesList();
     $('auth-modal-overlay').classList.remove('hidden');
   },
 
@@ -469,8 +421,8 @@ const Auth = {
   },
 
   updateModalStats() {
-    $('modal-user-name').textContent = this._activeUser.name;
-    $('modal-user-status').textContent = this.isGuest() ? 'Misafir Profili' : 'Kayıtlı Profil';
+    $('modal-user-name').textContent = this.getUserDisplayName(this._currentUser);
+    $('modal-user-status').textContent = this.isGuest() ? 'Misafir Profili' : '🔥 Firebase ile Bağlı';
 
     if (typeof Memorized !== 'undefined') {
       $('auth-stat-mem').textContent = Memorized.count();
@@ -483,88 +435,31 @@ const Auth = {
     }
   },
 
-  renderProfilesList() {
-    const container = $('auth-profiles-list');
-    if (!container) return;
-    container.innerHTML = '';
-
-    Object.values(this._users).forEach(u => {
-      const isCurrent = (u.id === this._activeUser.id);
-      const memCount = u.data && u.data.memorized ? u.data.memorized.length : 0;
-      const simCount = u.data && u.data.similarLists ? u.data.similarLists.length : 0;
-      const row = document.createElement('div');
-      row.className = 'auth-profile-item' + (isCurrent ? ' active' : '');
-      row.innerHTML = `
-        <div style="flex:1">
-          <div style="font-weight:700;font-size:.9rem">${u.name} ${isCurrent ? '<span class="badge badge-green" style="font-size:.68rem">Aktif</span>' : ''}</div>
-          <div style="font-size:.75rem;color:var(--gray-500)">${memCount} ezber · ${simCount} liste · Son sayfa: ${u.data.lastPage || 1}</div>
-        </div>
-        ${!isCurrent ? `<button class="btn btn-sm btn-secondary" onclick="Auth.switchUser('${u.id}')">Geç</button>` : ''}
-      `;
-      container.appendChild(row);
-    });
-  },
-
-  handleLoginBtn() {
+  async handleLoginBtn() {
     const uInput = $('auth-username');
     const pInput = $('auth-password');
-    const res = this.login(uInput.value, pInput.value);
-    if (res.success) {
-      this.closeAuthModal();
-    } else {
+    const res = await this.login(uInput.value, pInput.value);
+    if (!res.success) {
       if (typeof showToast === 'function') showToast(res.message, 'error');
       else alert(res.message);
     }
   },
 
-  handleRegisterBtn() {
+  async handleRegisterBtn() {
     const uInput = $('auth-username');
     const pInput = $('auth-password');
-    const res = this.register(uInput.value, pInput.value);
-    if (res.success) {
-      this.closeAuthModal();
-    } else {
+    const res = await this.register(uInput.value, pInput.value);
+    if (!res.success) {
       if (typeof showToast === 'function') showToast(res.message, 'error');
       else alert(res.message);
     }
   },
 
-  handleCopySyncLink() {
-    if (this.isGuest()) {
-      if (typeof showToast === 'function') showToast('⚠️ Lütfen önce bir hesap açın veya giriş yapın.', 'error');
-      else alert('Lütfen önce bir hesap açın.');
-      return;
-    }
-    const link = this.generateSyncLink();
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(link).then(() => {
-        if (typeof showToast === 'function') showToast('📋 Senkronizasyon linki kopyalandı! Tabletinizde açın.', 'success');
-        else alert('Senkronizasyon linki kopyalandı: ' + link);
-      }).catch(() => {
-        prompt('Aşağıdaki linki kopyalayıp tabletinizde açın:', link);
-      });
-    } else {
-      prompt('Aşağıdaki linki kopyalayıp tabletinizde açın:', link);
-    }
-  },
-
-  handleApplySyncCode() {
-    const input = $('input-sync-code');
-    const res = this.importSyncCode(input ? input.value : '');
-    if (res.success) {
-      if (typeof showToast === 'function') showToast(res.message, 'success');
-      this.closeAuthModal();
-    } else {
-      if (typeof showToast === 'function') showToast(res.message, 'error');
-      else alert(res.message);
-    }
-  },
-
-  handleChangePasswordBtn() {
+  async handleChangePasswordBtn() {
     const oldP = $('auth-old-pw') ? $('auth-old-pw').value : '';
     const newP = $('auth-new-pw') ? $('auth-new-pw').value : '';
     const newP2 = $('auth-new-pw2') ? $('auth-new-pw2').value : '';
-    const res = this.changePassword(oldP, newP, newP2);
+    const res = await this.changePassword(oldP, newP, newP2);
     if (res.success) {
       if (typeof showToast === 'function') showToast('🔑 ' + res.message, 'success');
       else alert(res.message);
@@ -575,24 +470,8 @@ const Auth = {
       if (typeof showToast === 'function') showToast(res.message, 'error');
       else alert(res.message);
     }
-  },
-
-  handleImportFile(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const res = this.importBackup(e.target.result);
-      if (res.success) {
-        if (typeof showToast === 'function') showToast(res.message, 'success');
-        this.closeAuthModal();
-      } else {
-        alert(res.message);
-      }
-    };
-    reader.readAsText(file);
   }
 };
 
-// Sayfa yüklendiğinde başlat
+// Sayfa yüklendiğinde Firebase başlat
 document.addEventListener('DOMContentLoaded', () => Auth.init());
