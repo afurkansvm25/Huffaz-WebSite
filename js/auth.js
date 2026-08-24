@@ -141,12 +141,20 @@ const Auth = {
     return !this._currentUser;
   },
 
+  _unsubscribeFirestore: null,
+
   // ── Firebase Oturum Durumu Değiştiğinde ──
   async handleAuthStateChange(user) {
     this._currentUser = user;
+    if (this._unsubscribeFirestore) {
+      this._unsubscribeFirestore();
+      this._unsubscribeFirestore = null;
+    }
+
     if (user) {
       localStorage.setItem(this.LS_ACTIVE_USER, user.uid);
       await this.pullCloudData(user);
+      this.attachRealtimeListener(user);
     } else {
       localStorage.setItem(this.LS_ACTIVE_USER, 'guest');
     }
@@ -160,9 +168,64 @@ const Auth = {
     if (typeof SimilarLists !== 'undefined' && SimilarLists.load) SimilarLists.load();
   },
 
+  // ── Gerçek Zamanlı Firestore Dinleyicisi (PC'de basınca telefonda anında güncellensin) ──
+  attachRealtimeListener(user) {
+    if (!user || !this._fbDb) return;
+    try {
+      this._unsubscribeFirestore = this._fbDb.collection('users').doc(user.uid).onSnapshot((doc) => {
+        if (doc.exists) {
+          const data = doc.data();
+          let changed = false;
+
+          if (data.memorized && Array.isArray(data.memorized)) {
+            const current = localStorage.getItem(`huffaz_${user.uid}_memorized`);
+            const incoming = JSON.stringify(data.memorized);
+            if (current !== incoming) {
+              localStorage.setItem(`huffaz_${user.uid}_memorized`, incoming);
+              changed = true;
+            }
+          }
+          if (data.bookmarks && Array.isArray(data.bookmarks)) {
+            const current = localStorage.getItem(`huffaz_${user.uid}_bookmarks`);
+            const incoming = JSON.stringify(data.bookmarks);
+            if (current !== incoming) {
+              localStorage.setItem(`huffaz_${user.uid}_bookmarks`, incoming);
+              changed = true;
+            }
+          }
+          if (data.similarLists && Array.isArray(data.similarLists)) {
+            const current = localStorage.getItem(`huffaz_${user.uid}_similar_lists`);
+            const incoming = JSON.stringify(data.similarLists);
+            if (current !== incoming) {
+              localStorage.setItem(`huffaz_${user.uid}_similar_lists`, incoming);
+              changed = true;
+            }
+          }
+          if (data.lastPage) {
+            localStorage.setItem(`huffaz_${user.uid}_last_page`, String(data.lastPage));
+          }
+
+          if (changed) {
+            if (typeof Memorized !== 'undefined' && Memorized.load) Memorized.load();
+            if (typeof Bookmarks !== 'undefined' && Bookmarks.load) Bookmarks.load();
+            if (typeof SimilarLists !== 'undefined' && SimilarLists.load) SimilarLists.load();
+            this.updateModalStats();
+            // Sayfa içerisindeki rozet ve butonları yenile
+            if (typeof renderSurahList === 'function') renderSurahList();
+            if (typeof updatePlaylistBadges === 'function') updatePlaylistBadges();
+          }
+        }
+      }, (err) => {
+        console.warn('Firestore realtime dinleyici uyarısı:', err);
+      });
+    } catch (e) {
+      console.warn('attachRealtimeListener hatası:', e);
+    }
+  },
+
   // ── Buluttan Kullanıcı Verilerini Çek ──
   async pullCloudData(user) {
-    if (!user || !this._fbDb) return;
+    if (!user || !this._fbDb) return false;
     try {
       const doc = await this._fbDb.collection('users').doc(user.uid).get();
       if (doc.exists) {
@@ -179,9 +242,16 @@ const Auth = {
         if (data.lastPage) {
           localStorage.setItem(`huffaz_${user.uid}_last_page`, String(data.lastPage));
         }
+
+        if (typeof Memorized !== 'undefined' && Memorized.load) Memorized.load();
+        if (typeof Bookmarks !== 'undefined' && Bookmarks.load) Bookmarks.load();
+        if (typeof SimilarLists !== 'undefined' && SimilarLists.load) SimilarLists.load();
+        this.updateModalStats();
+        return true;
       }
     } catch (e) {
-      console.warn('Bulut verisi çekilirken uyarı:', e);
+      console.warn('Bulut verisi çekilirken uyarı (Firestore veritabanının oluşturulması gerekiyor olabilir):', e);
+      return false;
     }
   },
 
@@ -205,7 +275,27 @@ const Auth = {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
     } catch (e) {
-      console.warn('Buluta veri kaydedilirken uyarı:', e);
+      console.warn('Buluta veri kaydedilirken uyarı (Firestore veritabanı aktif değilse kaydedilemez):', e);
+    }
+  },
+
+  // ── Manuel Senkronizasyon Tetikle ──
+  async manualSync() {
+    if (this.isGuest()) {
+      if (typeof showToast === 'function') showToast('⚠️ Lütfen önce bir hesapla giriş yapın.', 'error');
+      else alert('Lütfen önce giriş yapın.');
+      return;
+    }
+
+    if (typeof showToast === 'function') showToast('🔄 Bulut ile eşitleniyor...', 'info');
+    await this.pushCloudData();
+    const success = await this.pullCloudData(this._currentUser);
+    if (success) {
+      if (typeof showToast === 'function') showToast('✅ Tüm verileriniz bulut ile başarıyla eşitlendi!', 'success');
+    } else {
+      if (typeof showToast === 'function') {
+        showToast('⚠️ Firestore veritabanı henüz oluşturulmamış. Lütfen Firebase Console üzerinden Cloud Firestore oluşturun.', 'error');
+      }
     }
   },
 
@@ -352,6 +442,7 @@ const Auth = {
                   ${this.isGuest() ? 'Misafir Modu' : '🔥 Firebase ile Bağlı'}
                 </div>
               </div>
+              ${!this.isGuest() ? '<button class="btn btn-sm btn-secondary" onclick="Auth.manualSync()" title="Bulut ile Eşitle" style="padding:6px 10px;font-size:.8rem">🔄 Eşitle</button>' : ''}
             </div>
 
             <!-- İstatistik Özeti -->
