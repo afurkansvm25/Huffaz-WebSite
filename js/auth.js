@@ -1,7 +1,7 @@
 /* ================================================================
-   auth.js — Huffaz Firebase Yetkilendirme ve Gerçek Zamanlı Senkronizasyon
-   Firebase Auth ve Cloud entegrasyonu ile cihazlar arası (Bilgisayar, Tablet, Telefon)
-   kesintisiz oturum yönetimi ve veri senkronizasyonu sağlar.
+   auth.js — Huffaz Firebase Yetkilendirme ve Canlı Realtime Database Senkronizasyonu
+   Firebase Auth & Realtime Database ile bilgisayar, tablet ve telefonlar arasında
+   anlık, canlı ve kesintisiz veri senkronizasyonu sağlar.
 ================================================================ */
 'use strict';
 
@@ -10,6 +10,7 @@ const Auth = {
     // GitHub Secret Scanner uyarılarını önlemek için güvenli çözümlenir
     apiKey: atob("QUl6YVN5QS1TYjlwSVc4RGkyUGpLOFlNam5PVXNPVkR4eHgtS05r"),
     authDomain: "huffaz-f3d06.firebaseapp.com",
+    databaseURL: "https://huffaz-f3d06-default-rtdb.europe-west1.firebasedatabase.app",
     projectId: "huffaz-f3d06",
     storageBucket: "huffaz-f3d06.firebasestorage.app",
     messagingSenderId: "560140356389",
@@ -20,22 +21,10 @@ const Auth = {
   _currentUser: null,
   _initialized: false,
   _fbAuth: null,
-  _fbDb: null,
+  _fbRtdb: null,
+  _rtdbListenerAttached: false,
 
   async init() {
-    // Tüm önceki yerel hesap verilerini ve oturumları temizle (Kullanıcı talebi)
-    try {
-      [
-        'huffaz_accounts_v1', 'huffaz_accounts_v2', 'huffaz_accounts_v3', 'huffaz_accounts_v4', 'huffaz_accounts_v5',
-        'huffaz_active_user_id', 'huffaz_active_user_id_v2', 'huffaz_active_user_id_v3', 'huffaz_active_user_id_v4', 'huffaz_active_user_id_v5',
-        'huffaz_similar_lists_v1', 'huffaz_memorized_v1', 'huffaz_bookmarks_v1'
-      ].forEach(k => {
-        if (localStorage.getItem(k)) localStorage.removeItem(k);
-      });
-    } catch (e) {
-      console.warn('Storage cleanup error:', e);
-    }
-
     // 1. Firebase SDK'larını dinamik ve güvenli olarak yükle
     await this.loadFirebaseSDK();
 
@@ -47,15 +36,9 @@ const Auth = {
         }
         this._fbAuth = firebase.auth();
         try {
-          this._fbDb = firebase.firestore();
+          this._fbRtdb = firebase.database();
         } catch (e) {
-          console.warn('Firestore initialization optional:', e);
-        }
-
-        // Kullanıcı talebi: Halihazırdaki eski oturumları sıfırla
-        if (!localStorage.getItem('huffaz_v6_clean_boot')) {
-          localStorage.setItem('huffaz_v6_clean_boot', 'true');
-          try { await this._fbAuth.signOut(); } catch {}
+          console.warn('Realtime Database initialization warning:', e);
         }
 
         // Oturum durum dinleyicisi (Tüm cihazlarda otomatik tanıma)
@@ -73,7 +56,7 @@ const Auth = {
   // ── Firebase CDN Scriptlerini Sırayla Yükle ──
   loadFirebaseSDK() {
     return new Promise((resolve) => {
-      if (typeof firebase !== 'undefined' && firebase.auth) {
+      if (typeof firebase !== 'undefined' && firebase.auth && firebase.database) {
         resolve();
         return;
       }
@@ -81,7 +64,7 @@ const Auth = {
       const scripts = [
         'https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js',
         'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js',
-        'https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js'
+        'https://www.gstatic.com/firebasejs/10.8.1/firebase-database-compat.js'
       ];
 
       let loadedCount = 0;
@@ -108,7 +91,7 @@ const Auth = {
     });
   },
 
-  // ── Kullanıcı adı -> E-posta Dönüştürücü (Kullanıcı isterse direkt e-posta veya sadece isim girebilir) ──
+  // ── Kullanıcı adı -> E-posta Dönüştürücü ──
   formatEmail(identifier) {
     identifier = (identifier || '').trim();
     if (identifier.includes('@')) return identifier;
@@ -141,22 +124,16 @@ const Auth = {
     return !this._currentUser;
   },
 
-  _unsubscribeFirestore: null,
-
   // ── Firebase Oturum Durumu Değiştiğinde ──
   async handleAuthStateChange(user) {
     this._currentUser = user;
-    if (this._unsubscribeFirestore) {
-      this._unsubscribeFirestore();
-      this._unsubscribeFirestore = null;
-    }
 
     if (user) {
       localStorage.setItem(this.LS_ACTIVE_USER, user.uid);
-      await this.pullCloudData(user);
-      this.attachRealtimeListener(user);
+      this.attachRealtimeDatabaseListener(user);
     } else {
       localStorage.setItem(this.LS_ACTIVE_USER, 'guest');
+      this._rtdbListenerAttached = false;
     }
 
     this.updateHeaderBadge();
@@ -168,13 +145,14 @@ const Auth = {
     if (typeof SimilarLists !== 'undefined' && SimilarLists.load) SimilarLists.load();
   },
 
-  // ── Gerçek Zamanlı Firestore Dinleyicisi (PC'de basınca telefonda anında güncellensin) ──
-  attachRealtimeListener(user) {
-    if (!user || !this._fbDb) return;
+  // ── Canlı Realtime Database Dinleyicisi (Bilgisayarda basınca telefonda anında canlı akar) ──
+  attachRealtimeDatabaseListener(user) {
+    if (!user || !this._fbRtdb) return;
     try {
-      this._unsubscribeFirestore = this._fbDb.collection('users').doc(user.uid).onSnapshot((doc) => {
-        if (doc.exists) {
-          const data = doc.data();
+      const userRef = this._fbRtdb.ref(`users/${user.uid}`);
+      userRef.on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
           let changed = false;
 
           if (data.memorized && Array.isArray(data.memorized)) {
@@ -210,54 +188,23 @@ const Auth = {
             if (typeof Bookmarks !== 'undefined' && Bookmarks.load) Bookmarks.load();
             if (typeof SimilarLists !== 'undefined' && SimilarLists.load) SimilarLists.load();
             this.updateModalStats();
-            // Sayfa içerisindeki rozet ve butonları yenile
+            // Sayfa içerisindeki rozetleri ve görünümleri canlı güncelle
             if (typeof renderSurahList === 'function') renderSurahList();
             if (typeof updatePlaylistBadges === 'function') updatePlaylistBadges();
+            if (typeof renderBookmarks === 'function') renderBookmarks();
+            if (typeof renderLists === 'function') renderLists();
           }
         }
-      }, (err) => {
-        console.warn('Firestore realtime dinleyici uyarısı:', err);
       });
+      this._rtdbListenerAttached = true;
     } catch (e) {
-      console.warn('attachRealtimeListener hatası:', e);
+      console.warn('Realtime Database listener hatası:', e);
     }
   },
 
-  // ── Buluttan Kullanıcı Verilerini Çek ──
-  async pullCloudData(user) {
-    if (!user || !this._fbDb) return false;
-    try {
-      const doc = await this._fbDb.collection('users').doc(user.uid).get();
-      if (doc.exists) {
-        const data = doc.data();
-        if (data.memorized && Array.isArray(data.memorized)) {
-          localStorage.setItem(`huffaz_${user.uid}_memorized`, JSON.stringify(data.memorized));
-        }
-        if (data.bookmarks && Array.isArray(data.bookmarks)) {
-          localStorage.setItem(`huffaz_${user.uid}_bookmarks`, JSON.stringify(data.bookmarks));
-        }
-        if (data.similarLists && Array.isArray(data.similarLists)) {
-          localStorage.setItem(`huffaz_${user.uid}_similar_lists`, JSON.stringify(data.similarLists));
-        }
-        if (data.lastPage) {
-          localStorage.setItem(`huffaz_${user.uid}_last_page`, String(data.lastPage));
-        }
-
-        if (typeof Memorized !== 'undefined' && Memorized.load) Memorized.load();
-        if (typeof Bookmarks !== 'undefined' && Bookmarks.load) Bookmarks.load();
-        if (typeof SimilarLists !== 'undefined' && SimilarLists.load) SimilarLists.load();
-        this.updateModalStats();
-        return true;
-      }
-    } catch (e) {
-      console.warn('Bulut verisi çekilirken uyarı (Firestore veritabanının oluşturulması gerekiyor olabilir):', e);
-      return false;
-    }
-  },
-
-  // ── Buluta Kullanıcı Verilerini Kaydet (Auto-Sync) ──
+  // ── Buluta Veri Kaydet (Realtime Auto-Sync) ──
   async pushCloudData() {
-    if (!this._currentUser || !this._fbDb) return;
+    if (!this._currentUser || !this._fbRtdb) return;
     try {
       const uid = this._currentUser.uid;
       const memorized = JSON.parse(localStorage.getItem(`huffaz_${uid}_memorized`) || '[]');
@@ -265,21 +212,21 @@ const Auth = {
       const similarLists = JSON.parse(localStorage.getItem(`huffaz_${uid}_similar_lists`) || '[]');
       const lastPage = parseInt(localStorage.getItem(`huffaz_${uid}_last_page`) || '1') || 1;
 
-      await this._fbDb.collection('users').doc(uid).set({
+      await this._fbRtdb.ref(`users/${uid}`).set({
         username: this.getUserDisplayName(this._currentUser),
         email: this._currentUser.email,
         memorized,
         bookmarks,
         similarLists,
         lastPage,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
+        updatedAt: Date.now()
+      });
     } catch (e) {
-      console.warn('Buluta veri kaydedilirken uyarı (Firestore veritabanı aktif değilse kaydedilemez):', e);
+      console.warn('Buluta veri kaydedilirken uyarı:', e);
     }
   },
 
-  // ── Manuel Senkronizasyon Tetikle ──
+  // ── Manuel Senkronizasyon ──
   async manualSync() {
     if (this.isGuest()) {
       if (typeof showToast === 'function') showToast('⚠️ Lütfen önce bir hesapla giriş yapın.', 'error');
@@ -288,14 +235,11 @@ const Auth = {
     }
 
     if (typeof showToast === 'function') showToast('🔄 Bulut ile eşitleniyor...', 'info');
-    await this.pushCloudData();
-    const success = await this.pullCloudData(this._currentUser);
-    if (success) {
-      if (typeof showToast === 'function') showToast('✅ Tüm verileriniz bulut ile başarıyla eşitlendi!', 'success');
-    } else {
-      if (typeof showToast === 'function') {
-        showToast('⚠️ Firestore veritabanı henüz oluşturulmamış. Lütfen Firebase Console üzerinden Cloud Firestore oluşturun.', 'error');
-      }
+    try {
+      await this.pushCloudData();
+      if (typeof showToast === 'function') showToast('✅ Tüm ezber ve listeleriniz bulut ile başarıyla eşitlendi!', 'success');
+    } catch (err) {
+      if (typeof showToast === 'function') showToast('Eşitleme hatası: ' + err.message, 'error');
     }
   },
 
@@ -318,6 +262,7 @@ const Auth = {
     try {
       const userCredential = await this._fbAuth.createUserWithEmailAndPassword(email, password.trim());
       await userCredential.user.updateProfile({ displayName });
+      await this.pushCloudData();
       this.closeAuthModal();
       if (typeof showToast === 'function') {
         showToast(`✅ Hoş geldiniz, ${displayName}! Hesabınız oluşturuldu.`, 'success');
@@ -427,7 +372,7 @@ const Auth = {
           <div class="auth-modal-header">
             <div style="display:flex;align-items:center;gap:8px">
               <span style="font-size:1.4rem">👤</span>
-              <h3 id="auth-modal-title">Kişisel Hesap & Firebase Bulut Senkronizasyonu</h3>
+              <h3 id="auth-modal-title">Kişisel Hesap & Canlı Bulut Senkronizasyonu</h3>
             </div>
             <button class="auth-modal-close" onclick="Auth.closeAuthModal()">✕</button>
           </div>
@@ -439,7 +384,7 @@ const Auth = {
               <div style="flex:1">
                 <div class="auth-profile-name" id="modal-user-name">${this.getUserDisplayName(this._currentUser)}</div>
                 <div class="auth-profile-status" id="modal-user-status">
-                  ${this.isGuest() ? 'Misafir Modu' : '🔥 Firebase ile Bağlı'}
+                  ${this.isGuest() ? 'Misafir Modu' : '🟢 Canlı Realtime Database Bağlı'}
                 </div>
               </div>
               ${!this.isGuest() ? '<button class="btn btn-sm btn-secondary" onclick="Auth.manualSync()" title="Bulut ile Eşitle" style="padding:6px 10px;font-size:.8rem">🔄 Eşitle</button>' : ''}
@@ -533,7 +478,7 @@ const Auth = {
 
   updateModalStats() {
     $('modal-user-name').textContent = this.getUserDisplayName(this._currentUser);
-    $('modal-user-status').textContent = this.isGuest() ? 'Misafir Profili' : '🔥 Firebase ile Bağlı';
+    $('modal-user-status').textContent = this.isGuest() ? 'Misafir Profili' : '🟢 Canlı Realtime Database Bağlı';
 
     if (typeof Memorized !== 'undefined') {
       $('auth-stat-mem').textContent = Memorized.count();
