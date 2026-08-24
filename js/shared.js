@@ -227,6 +227,349 @@ const SpreadMode = {
   }
 };
 
+// ── Benzer / Karıştırılan Ayet Listeleri (Müteşâbih Listeleri) ───
+const SimilarLists = {
+  _lists: null,
+
+  load() {
+    try {
+      const k = getUserKey('similar_lists');
+      let raw = localStorage.getItem(k);
+      if (!raw) raw = localStorage.getItem('huffaz_similar_lists_v1');
+      this._lists = raw ? JSON.parse(raw) : null;
+    } catch {
+      this._lists = null;
+    }
+
+    if (!this._lists || !Array.isArray(this._lists)) {
+      this._lists = this.getDefaultLists();
+      this.save();
+    }
+    return this;
+  },
+
+  getDefaultLists() {
+    return [
+      {
+        id: 'list_default_1',
+        title: 'Örnek: "İnneke Ente\'l-Alîmü\'l-Hakîm"',
+        desc: 'Bakara 32 ve diğer benzer bitişli ayetler',
+        createdAt: Date.now(),
+        ayahs: ['2:32', '2:127']
+      },
+      {
+        id: 'list_default_2',
+        title: 'Örnek: "Kâlû Subhâneke"',
+        desc: 'Meleklerin tesbihi ve benzer başlayan ayetler',
+        createdAt: Date.now(),
+        ayahs: ['2:32', '10:10']
+      }
+    ];
+  },
+
+  save() {
+    try {
+      localStorage.setItem(getUserKey('similar_lists'), JSON.stringify(this._lists));
+      localStorage.setItem('huffaz_similar_lists_v1', JSON.stringify(this._lists));
+      if (typeof Auth !== 'undefined' && Auth._activeUser && Auth._activeUser.data) {
+        Auth._activeUser.data.similarLists = this._lists;
+        Auth.saveUsers();
+      }
+    } catch (e) {
+      console.error('SimilarLists kaydetme hatası:', e);
+    }
+  },
+
+  getAll() {
+    if (!this._lists) this.load();
+    return [...this._lists];
+  },
+
+  getById(id) {
+    if (!this._lists) this.load();
+    return this._lists.find(l => l.id === id);
+  },
+
+  createList(title, desc = '', initialAyahs = []) {
+    if (!this._lists) this.load();
+    const id = 'list_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+    const newList = {
+      id,
+      title: title.trim() || 'Yeni Liste',
+      desc: desc.trim(),
+      createdAt: Date.now(),
+      ayahs: Array.isArray(initialAyahs) ? [...initialAyahs] : []
+    };
+    this._lists.unshift(newList);
+    this.save();
+    return newList;
+  },
+
+  renameList(id, newTitle, newDesc) {
+    if (!this._lists) this.load();
+    const l = this._lists.find(x => x.id === id);
+    if (!l) return false;
+    if (newTitle !== undefined) l.title = newTitle.trim();
+    if (newDesc !== undefined) l.desc = newDesc.trim();
+    this.save();
+    return true;
+  },
+
+  deleteList(id) {
+    if (!this._lists) this.load();
+    this._lists = this._lists.filter(l => l.id !== id);
+    this.save();
+    return true;
+  },
+
+  addAyah(listId, surahNo, ayahNo) {
+    if (!this._lists) this.load();
+    const l = this._lists.find(x => x.id === listId);
+    if (!l) return false;
+    const key = `${surahNo}:${ayahNo}`;
+    if (!l.ayahs.includes(key)) {
+      l.ayahs.push(key);
+      this.save();
+      return true;
+    }
+    return false;
+  },
+
+  removeAyah(listId, surahNo, ayahNo) {
+    if (!this._lists) this.load();
+    const l = this._lists.find(x => x.id === listId);
+    if (!l) return false;
+    const key = `${surahNo}:${ayahNo}`;
+    l.ayahs = l.ayahs.filter(k => k !== key);
+    this.save();
+    return true;
+  },
+
+  toggleAyah(listId, surahNo, ayahNo) {
+    if (!this._lists) this.load();
+    const l = this._lists.find(x => x.id === listId);
+    if (!l) return false;
+    const key = `${surahNo}:${ayahNo}`;
+    const idx = l.ayahs.indexOf(key);
+    if (idx !== -1) {
+      l.ayahs.splice(idx, 1);
+      this.save();
+      return false; // çıkarıldı
+    } else {
+      l.ayahs.push(key);
+      this.save();
+      return true; // eklendi
+    }
+  },
+
+  hasAyah(listId, surahNo, ayahNo) {
+    if (!this._lists) this.load();
+    const l = this._lists.find(x => x.id === listId);
+    if (!l) return false;
+    return l.ayahs.includes(`${surahNo}:${ayahNo}`);
+  },
+
+  getListsContainingAyah(surahNo, ayahNo) {
+    if (!this._lists) this.load();
+    const key = `${surahNo}:${ayahNo}`;
+    return this._lists.filter(l => l.ayahs.includes(key));
+  },
+
+  count() {
+    if (!this._lists) this.load();
+    return this._lists.length;
+  }
+};
+
+// ── YouTube Playlist Tarzı "Listeye Kaydet" Modalı ───────────────
+const PlaylistModal = {
+  _currentAyah: null,
+
+  injectUI() {
+    if ($('playlist-modal-overlay')) return;
+    const modalHtml = `
+      <div id="playlist-modal-overlay" class="playlist-modal-overlay hidden" onclick="PlaylistModal.handleOverlayClick(event)">
+        <div class="playlist-modal-card" onclick="event.stopPropagation()">
+          <div class="playlist-modal-header">
+            <div>
+              <h3 class="playlist-modal-title">Listeye Kaydet...</h3>
+              <p id="pl-modal-ayah-sub" class="playlist-modal-sub">—</p>
+            </div>
+            <button class="modal-close-btn" onclick="PlaylistModal.close()" title="Kapat">✕</button>
+          </div>
+
+          <div id="pl-modal-ayah-preview" class="playlist-ayah-preview" dir="rtl"></div>
+
+          <div class="playlist-items-wrap" id="pl-items-list">
+            <!-- Playlist satırları dinamik yüklenir -->
+          </div>
+
+          <!-- Yeni Liste Oluşturma Alanı (YouTube Tarzı) -->
+          <div class="playlist-create-section">
+            <div id="pl-create-btn-row">
+              <button class="pl-add-list-btn" onclick="PlaylistModal.showCreateForm()">
+                <span style="font-size:1.15rem;font-weight:700">＋</span> Yeni Liste Oluştur
+              </button>
+            </div>
+            <div id="pl-create-form" class="pl-create-form hidden">
+              <input id="pl-new-title-input" class="pl-input-field" type="text" placeholder="Liste Başlığı (Örn: Müteşâbih Ayetler)" maxlength="70">
+              <div class="pl-form-actions">
+                <button class="btn btn-sm btn-secondary" onclick="PlaylistModal.hideCreateForm()">İptal</button>
+                <button class="btn btn-sm btn-primary" onclick="PlaylistModal.handleCreateSubmit()">Oluştur & Ekle</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // Enter tuşuna basıldığında yeni liste oluştur
+    setTimeout(() => {
+      const input = $('pl-new-title-input');
+      if (input) {
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            PlaylistModal.handleCreateSubmit();
+          }
+        });
+      }
+    }, 100);
+  },
+
+  open(surahNo, ayahNo) {
+    this.injectUI();
+    const ayah = (typeof QURAN_DATA !== 'undefined')
+      ? QURAN_DATA.find(a => a.surahNo === surahNo && a.ayahNo === ayahNo)
+      : null;
+
+    this._currentAyah = {
+      surahNo,
+      ayahNo,
+      surahTr: ayah ? ayah.surahTr : `${surahNo}. Sure`,
+      text: ayah ? getCleanAyahText(ayah) : ''
+    };
+
+    $('pl-modal-ayah-sub').textContent = `${surahNo}. ${this._currentAyah.surahTr} Suresi, ${ayahNo}. Ayet`;
+    $('pl-modal-ayah-preview').textContent = this._currentAyah.text;
+
+    this.renderListItems();
+    this.hideCreateForm();
+
+    $('playlist-modal-overlay').classList.remove('hidden');
+  },
+
+  close() {
+    const overlay = $('playlist-modal-overlay');
+    if (overlay) overlay.classList.add('hidden');
+    this._currentAyah = null;
+
+    // Sureler veya benzer sayfadaysa rozetleri güncelle
+    if (typeof updatePlaylistBadges === 'function') {
+      updatePlaylistBadges();
+    }
+  },
+
+  handleOverlayClick(e) {
+    if (e.target.id === 'playlist-modal-overlay') {
+      this.close();
+    }
+  },
+
+  renderListItems() {
+    const container = $('pl-items-list');
+    if (!container || !this._currentAyah) return;
+    container.innerHTML = '';
+
+    const lists = SimilarLists.getAll();
+    if (lists.length === 0) {
+      container.innerHTML = `
+        <div class="pl-empty-msg">
+          Henüz oluşturulmuş bir listeniz yok.<br>Aşağıdan ilk listenizi oluşturabilirsiniz.
+        </div>
+      `;
+      return;
+    }
+
+    const { surahNo, ayahNo } = this._currentAyah;
+    const key = `${surahNo}:${ayahNo}`;
+
+    lists.forEach(list => {
+      const isSaved = list.ayahs.includes(key);
+      const row = document.createElement('div');
+      row.className = 'playlist-modal-item' + (isSaved ? ' selected' : '');
+      row.innerHTML = `
+        <div class="pl-item-thumb">
+          <span style="font-size:1.1rem">📑</span>
+        </div>
+        <div class="pl-item-info">
+          <div class="pl-item-title">${list.title}</div>
+          <div class="pl-item-count">${list.ayahs.length} ayet</div>
+        </div>
+        <div class="pl-item-action">
+          <button class="pl-ribbon-btn ${isSaved ? 'active' : ''}" title="${isSaved ? 'Listeden Kaldır' : 'Listeye Ekle'}">
+            ${isSaved ? '🔖' : '🏷️'}
+          </button>
+        </div>
+      `;
+
+      row.addEventListener('click', () => {
+        const added = SimilarLists.toggleAyah(list.id, surahNo, ayahNo);
+        if (added) {
+          showToast(`"${list.title}" listesine eklendi`, 'success');
+        } else {
+          showToast(`"${list.title}" listesinden çıkarıldı`);
+        }
+        this.renderListItems();
+        if (typeof updatePlaylistBadges === 'function') {
+          updatePlaylistBadges();
+        }
+      });
+
+      container.appendChild(row);
+    });
+  },
+
+  showCreateForm() {
+    $('pl-create-btn-row').classList.add('hidden');
+    $('pl-create-form').classList.remove('hidden');
+    const input = $('pl-new-title-input');
+    input.value = '';
+    input.focus();
+  },
+
+  hideCreateForm() {
+    const btnRow = $('pl-create-btn-row');
+    const form = $('pl-create-form');
+    if (btnRow) btnRow.classList.remove('hidden');
+    if (form) form.classList.add('hidden');
+  },
+
+  handleCreateSubmit() {
+    const input = $('pl-new-title-input');
+    const title = input.value.trim();
+    if (!title) {
+      showToast('Lütfen liste için bir başlık girin');
+      input.focus();
+      return;
+    }
+
+    if (!this._currentAyah) return;
+    const { surahNo, ayahNo } = this._currentAyah;
+    const initialAyahs = [`${surahNo}:${ayahNo}`];
+
+    const newList = SimilarLists.createList(title, '', initialAyahs);
+    showToast(`"${newList.title}" oluşturuldu ve ayet eklendi`, 'success');
+
+    this.hideCreateForm();
+    this.renderListItems();
+    if (typeof updatePlaylistBadges === 'function') {
+      updatePlaylistBadges();
+    }
+  }
+};
+
 // ── DOM yardımcıları ──────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const $$ = sel => document.querySelectorAll(sel);
@@ -262,3 +605,5 @@ function showToast(msg, type = '') {
 // ── Başlat ────────────────────────────────────────────────────
 Memorized.load();
 Bookmarks.load();
+SimilarLists.load();
+

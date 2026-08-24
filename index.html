@@ -163,6 +163,21 @@
       </div>
     </a>
 
+    <!-- 8. Benzer / Karıştırılan Ayetler -->
+    <a href="pages/benzer.html" class="home-card">
+      <div class="card-icon-wrap card-icon-teal">✨</div>
+      <div>
+        <div class="card-title">Benzer / Karıştırılan Ayetler</div>
+        <div class="card-desc">
+          Müteşâbih ve benzeyen ayetleri özel listelerde toplayın, yan yana karşılaştırın ve test edin
+        </div>
+      </div>
+      <div class="card-meta">
+        <span id="card-similar-badge" class="badge badge-teal">0 liste</span>
+        <span class="card-arrow">→</span>
+      </div>
+    </a>
+
   </div>
 </div>
 
@@ -181,6 +196,7 @@
     const memCount   = Memorized.count();
     const bmCount    = Bookmarks.count();
     const lastPage   = LastPage.get();
+    const simCount   = (typeof SimilarLists !== 'undefined') ? SimilarLists.count() : 0;
     const pct        = Math.round((memCount / totalAyahs) * 100);
 
     // Sure tamamlama sayısı
@@ -203,9 +219,12 @@
       `6.236 ayetten ${memCount.toLocaleString('tr-TR')} tanesi ezberlendi (%${pct})`;
 
     // Kart rozetleri
-    document.getElementById('card-sure-badge').textContent  = `${tamSure} sure`;
-    document.getElementById('card-bm-badge').textContent    = `${bmCount} yer imi`;
-    document.getElementById('card-last-page').textContent   = `Sayfa ${lastPage}`;
+    document.getElementById('card-sure-badge').textContent    = `${tamSure} sure`;
+    document.getElementById('card-bm-badge').textContent      = `${bmCount} yer imi`;
+    document.getElementById('card-last-page').textContent     = `Sayfa ${lastPage}`;
+    if (document.getElementById('card-similar-badge')) {
+      document.getElementById('card-similar-badge').textContent = `${simCount} liste`;
+    }
 
     // Göster
     document.getElementById('loading').classList.add('hidden');

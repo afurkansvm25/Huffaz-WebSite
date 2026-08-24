@@ -160,23 +160,58 @@ function renderPanelAyahs(surahNo) {
 
   surah.ayahs.forEach(ayah => {
     const isEzber = Memorized.has(ayah.surahNo, ayah.ayahNo);
-    const row     = document.createElement('div');
+    const hasSimilar = (typeof SimilarLists !== 'undefined') ? (SimilarLists.getListsContainingAyah(ayah.surahNo, ayah.ayahNo).length > 0) : false;
+
+    const row = document.createElement('div');
     row.className = 'ayet-satir' + (isEzber ? ' ezber' : '');
     row.dataset.key = `${ayah.surahNo}:${ayah.ayahNo}`;
     row.innerHTML = `
-      <div class="ayet-cb">${isEzber ? '✓' : ''}</div>
+      <div class="ayet-actions">
+        <div class="ayet-cb" title="Ezberledim">${isEzber ? '✓' : ''}</div>
+        <button class="ayet-save-btn ${hasSimilar ? 'active' : ''}" title="Benzer Ayet Listesine Ekle / Düzenle" type="button">
+          ${hasSimilar ? '🔖' : '🏷️'}
+        </button>
+      </div>
       <div class="ayet-no-badge">${ayah.ayahNo}</div>
       <div class="ayet-metin">${getCleanAyahText(ayah)}</div>
     `;
-    row.addEventListener('click', () => {
+
+    const saveBtn = row.querySelector('.ayet-save-btn');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        PlaylistModal.open(ayah.surahNo, ayah.ayahNo);
+      });
+    }
+
+    const cb = row.querySelector('.ayet-cb');
+    if (cb) {
+      cb.addEventListener('click', (e) => {
+        e.stopPropagation();
+        Memorized.toggle(ayah.surahNo, ayah.ayahNo);
+        renderPanelAyahs(surahNo);
+      });
+    }
+
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.ayet-save-btn') || e.target.closest('.ayet-cb')) return;
       Memorized.toggle(ayah.surahNo, ayah.ayahNo);
       renderPanelAyahs(surahNo);
     });
+
     frag.appendChild(row);
   });
 
   container.appendChild(frag);
 }
+
+// Playlist modalı kapandığında butonların durumunu güncellemek için genel fonksiyon
+window.updatePlaylistBadges = function() {
+  if (state.openSurah) {
+    renderPanelAyahs(state.openSurah);
+  }
+};
 
 function bulkMark(surahNo, mark) {
   const surah = state.surahMap.get(surahNo);

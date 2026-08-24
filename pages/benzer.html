@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Benzer / Karıştırılan Ayetler — Huffaz</title>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/main.css">
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    .benzer-empty-state {
+      background: var(--card);
+      border-radius: var(--r-l);
+      padding: 48px 24px;
+      text-align: center;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--gray-200);
+      margin-top: 20px;
+    }
+    .benzer-empty-icon { font-size: 3.5rem; margin-bottom: 12px; }
+    .benzer-empty-title { font-size: 1.3rem; font-weight: 800; color: var(--green-950); margin-bottom: 8px; }
+    .benzer-empty-desc { color: var(--gray-500); max-width: 480px; margin: 0 auto 20px; font-size: .92rem; line-height: 1.6; }
+    
+    .ayah-add-dialog-overlay {
+      position: fixed; inset: 0; z-index: 1000;
+      background: rgba(0,0,0,.6); backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    .ayah-add-card {
+      background: var(--card); border-radius: var(--r-l);
+      max-width: 460px; width: 100%;
+      padding: 24px; box-shadow: var(--shadow-xl);
+      border: 1px solid var(--gray-200);
+      animation: modalPop .2s ease;
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading" class="page-loading">
+  <div class="spinner"></div>
+  <p>Benzer ayet listeleri yükleniyor…</p>
+</div>
+
+<div id="app" class="hidden">
+
+  <!-- App Bar -->
+  <header class="app-bar">
+    <div class="app-bar-nav-btns">
+      <button class="app-bar-btn" onclick="location.href='../index.html'">← Ana Sayfa</button>
+      <button class="app-bar-btn" onclick="history.back()">← Geri</button>
+    </div>
+    <span class="app-bar-title" style="margin-left:8px">✨ Benzer / Karıştırılan Ayetler</span>
+    <span class="app-bar-sub" id="list-stats-badge">0 Liste</span>
+  </header>
+
+  <main class="benzer-container">
+
+    <!-- Üst Kontrol ve Arama Barı -->
+    <div class="benzer-top-bar">
+      <div style="flex:1;min-width:240px">
+        <input id="benzer-search" type="search" class="search-box" style="width:100%" placeholder="🔍 Liste adı, sure veya ayet metninde ara…">
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button id="btn-yeni-liste" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:6px;font-weight:700;">
+          <span style="font-size:1.1rem">＋</span> Yeni Liste Oluştur
+        </button>
+      </div>
+    </div>
+
+    <!-- Listelerin Gösterileceği Alan -->
+    <div id="benzer-lists-container"></div>
+
+  </main>
+</div>
+
+<!-- Ayet Ekleme Modalı -->
+<div id="add-ayah-modal" class="ayah-add-dialog-overlay hidden">
+  <div class="ayah-add-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h3 style="font-size:1.15rem;font-weight:800;color:var(--gray-900)">Listeye Ayet Ekle</h3>
+      <button class="modal-close-btn" onclick="closeAddAyahModal()">✕</button>
+    </div>
+    <p id="add-ayah-target-name" style="font-size:.85rem;color:var(--green-700);font-weight:600;margin-bottom:14px">—</p>
+
+    <div class="setup-row" style="margin-bottom:12px">
+      <label for="select-add-surah" style="width:70px">Sure:</label>
+      <select id="select-add-surah" class="select-field" onchange="updateAddAyahMax()"></select>
+    </div>
+
+    <div class="setup-row" style="margin-bottom:18px">
+      <label for="input-add-ayah" style="width:70px">Ayet No:</label>
+      <input id="input-add-ayah" type="number" min="1" max="286" value="1" class="select-field" placeholder="Ayet No">
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn btn-secondary" onclick="closeAddAyahModal()">İptal</button>
+      <button class="btn btn-primary" onclick="submitAddAyah()">Ekle</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast-container"></div>
+
+<script src="../js/data.js"></script>
+<script src="../js/page_map.js"></script>
+<script src="../js/shared.js"></script>
+<script src="../js/auth.js"></script>
+<script>
+'use strict';
+
+let currentTargetListId = null;
+let compareModeState = {}; // listId -> boolean
+
+function init() {
+  if (typeof QURAN_DATA === 'undefined' || !QURAN_DATA.length) {
+    $('loading').innerHTML = '<p style="color:#fff;padding:24px;text-align:center">❌ Veri yüklenemedi.</p>';
+    return;
+  }
+
+  populateSurahSelect();
+  bindEvents();
+  renderAllLists();
+
+  $('loading').classList.add('hidden');
+  $('app').classList.remove('hidden');
+}
+
+function bindEvents() {
+  $('benzer-search').addEventListener('input', (e) => {
+    renderAllLists(e.target.value.trim());
+  });
+
+  $('btn-yeni-liste').addEventListener('click', () => {
+    const title = prompt('Yeni benzer ayet listesi için bir başlık girin (Örn: İnneke ente\'l-alîmü\'l-hakîm):');
+    if (title && title.trim()) {
+      const desc = prompt('İsteğe bağlı açıklama veya hatırlatıcı not (boş bırakabilirsiniz):') || '';
+      const newList = SimilarLists.createList(title, desc);
+      showToast(`"${newList.title}" listesi oluşturuldu`, 'success');
+      renderAllLists();
+    }
+  });
+}
+
+function populateSurahSelect() {
+  const sel = $('select-add-surah');
+  sel.innerHTML = '';
+  const surahs = [];
+  const seen = new Set();
+  QURAN_DATA.forEach(a => {
+    if (!seen.has(a.surahNo)) {
+      seen.add(a.surahNo);
+      surahs.push({ no: a.surahNo, tr: a.surahTr, count: 0 });
+    }
+    surahs[surahs.length - 1].count++;
+  });
+
+  surahs.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.no;
+    opt.textContent = `${s.no}. ${s.tr} (${s.count} Ayet)`;
+    opt.dataset.max = s.count;
+    sel.appendChild(opt);
+  });
+}
+
+function updateAddAyahMax() {
+  const sel = $('select-add-surah');
+  const opt = sel.options[sel.selectedIndex];
+  const max = opt ? parseInt(opt.dataset.max) : 286;
+  const input = $('input-add-ayah');
+  input.max = max;
+  if (parseInt(input.value) > max) input.value = max;
+}
+
+function openAddAyahModal(listId) {
+  currentTargetListId = listId;
+  const list = SimilarLists.getById(listId);
+  if (!list) return;
+  $('add-ayah-target-name').textContent = `Hedef Liste: "${list.title}"`;
+  $('add-ayah-modal').classList.remove('hidden');
+  updateAddAyahMax();
+}
+
+function closeAddAyahModal() {
+  $('add-ayah-modal').classList.add('hidden');
+  currentTargetListId = null;
+}
+
+function submitAddAyah() {
+  if (!currentTargetListId) return;
+  const surahNo = parseInt($('select-add-surah').value);
+  const ayahNo = parseInt($('input-add-ayah').value);
+
+  if (!surahNo || !ayahNo) {
+    showToast('Lütfen geçerli bir ayet seçin');
+    return;
+  }
+
+  const added = SimilarLists.addAyah(currentTargetListId, surahNo, ayahNo);
+  if (added) {
+    showToast(`${surahNo}. Sure ${ayahNo}. Ayet listeye eklendi`, 'success');
+    closeAddAyahModal();
+    renderAllLists($('benzer-search').value.trim());
+  } else {
+    showToast('Bu ayet zaten listede bulunuyor');
+  }
+}
+
+function renderAllLists(filter = '') {
+  const container = $('benzer-lists-container');
+  container.innerHTML = '';
+
+  const lists = SimilarLists.getAll();
+  const totalLists = lists.length;
+  let totalAyahs = 0;
+  lists.forEach(l => totalAyahs += l.ayahs.length);
+
+  $('list-stats-badge').textContent = `${totalLists} Liste • ${totalAyahs} Ayet`;
+
+  const lf = filter.toLowerCase();
+  const filtered = lists.filter(l => {
+    if (!lf) return true;
+    if (l.title.toLowerCase().includes(lf)) return true;
+    if (l.desc && l.desc.toLowerCase().includes(lf)) return true;
+    // Ayet metinlerinde de ara
+    return l.ayahs.some(k => {
+      const [s, a] = k.split(':').map(Number);
+      const ayah = QURAN_DATA.find(x => x.surahNo === s && x.ayahNo === a);
+      if (!ayah) return false;
+      return (ayah.surahTr.toLowerCase().includes(lf) || ayah.text.includes(filter) || (ayah.translation && ayah.translation.toLowerCase().includes(lf)));
+    });
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="benzer-empty-state">
+        <div class="benzer-empty-icon">✨</div>
+        <h3 class="benzer-empty-title">Benzer Ayet Listesi Bulunamadı</h3>
+        <p class="benzer-empty-desc">
+          ${lf ? 'Arama kriterine uygun liste bulunamadı.' : 'Henüz kendinize ait bir benzer/müteşâbih ayet listesi oluşturmadınız. Yukarıdaki "Yeni Liste Oluştur" butonundan veya Sureler bölümündeki ayetlerin yanındaki 🔖 butonundan istediğiniz listeyi oluşturabilirsiniz.'}
+        </p>
+        <button class="btn btn-primary" onclick="$('btn-yeni-liste').click()">＋ İlk Listeni Oluştur</button>
+      </div>
+    `;
+    return;
+  }
+
+  filtered.forEach(list => {
+    const isCompareMode = Boolean(compareModeState[list.id]);
+    const card = document.createElement('div');
+    card.className = 'benzer-list-card';
+    card.id = `card-${list.id}`;
+
+    // Başlık ve Açıklama
+    const headerHtml = `
+      <div class="benzer-card-header">
+        <div style="flex:1;min-width:240px">
+          <div class="benzer-card-title">
+            <span>📑 ${list.title}</span>
+            <span class="badge badge-green" style="font-size:.75rem">${list.ayahs.length} Ayet</span>
+          </div>
+          ${list.desc ? `<div class="benzer-card-desc">💡 ${list.desc}</div>` : ''}
+        </div>
+        <div class="benzer-card-actions">
+          <button class="btn btn-sm ${isCompareMode ? 'btn-gold' : 'btn-outline'}" onclick="toggleCompareMode('${list.id}')" title="Ayetleri yan yana karşılaştır">
+            🔍 ${isCompareMode ? 'Normal Görünüm' : 'Yan Yana Karşılaştır'}
+          </button>
+          <button class="btn btn-sm btn-primary" onclick="openAddAyahModal('${list.id}')" title="Bu listeye ayet ekle">
+            ＋ Ayet Ekle
+          </button>
+          <button class="btn btn-sm btn-secondary" onclick="editList('${list.id}')" title="Listeyi Düzenle">
+            ✏️ Düzenle
+          </button>
+          <button class="btn btn-sm btn-danger" onclick="deleteList('${list.id}')" title="Listeyi Sil">
+            🗑️ Sil
+          </button>
+        </div>
+      </div>
+    `;
+
+    // Ayetler Listesi
+    let ayahsHtml = '';
+    if (list.ayahs.length === 0) {
+      ayahsHtml = `
+        <div style="padding:28px;text-align:center;color:var(--gray-500);font-size:.88rem">
+          Bu listede henüz hiç ayet yok.<br>
+          <button class="btn btn-sm btn-primary" style="margin-top:10px" onclick="openAddAyahModal('${list.id}')">＋ İlk Ayeti Ekle</button>
+        </div>
+      `;
+    } else {
+      ayahsHtml = `<div class="benzer-ayahs-grid ${isCompareMode ? 'compare-mode' : ''}">`;
+
+      list.ayahs.forEach(key => {
+        const [s, a] = key.split(':').map(Number);
+        const ayah = QURAN_DATA.find(x => x.surahNo === s && x.ayahNo === a);
+        if (!ayah) return;
+
+        const isEzber = Memorized.has(s, a);
+        const pageNum = pageForAyah(s, a);
+
+        ayahsHtml += `
+          <div class="benzer-ayah-item ${isEzber ? 'ezber' : ''}" id="item-${list.id}-${s}-${a}">
+            <div class="benzer-item-top">
+              <a href="sureler.html" class="benzer-item-badge" title="Sureye Git">
+                📖 ${s}. ${ayah.surahTr} Suresi, ${a}. Ayet (Sayfa ${pageNum})
+              </a>
+              <div style="display:flex;align-items:center;gap:8px">
+                <label style="display:inline-flex;align-items:center;gap:4px;font-size:.78rem;font-weight:700;color:${isEzber ? 'var(--green-700)' : 'var(--gray-500)'};cursor:pointer;">
+                  <input type="checkbox" ${isEzber ? 'checked' : ''} onchange="toggleEzberInList(${s}, ${a}, '${list.id}')">
+                  ${isEzber ? 'Ezberde ✓' : 'Ezberle'}
+                </label>
+                <button class="btn btn-sm btn-outline" style="padding:2px 8px;font-size:.75rem;color:var(--red-600);border-color:var(--red-200)" onclick="removeAyahFromList('${list.id}', ${s}, ${a})" title="Listeden Çıkar">
+                  ✕ Çıkar
+                </button>
+              </div>
+            </div>
+
+            <div class="benzer-ar-text">${getCleanAyahText(ayah)}</div>
+            ${ayah.translation ? `<div class="benzer-tr-text">${ayah.translation}</div>` : ''}
+          </div>
+        `;
+      });
+
+      ayahsHtml += `</div>`;
+    }
+
+    card.innerHTML = headerHtml + ayahsHtml;
+    container.appendChild(card);
+  });
+}
+
+function toggleCompareMode(listId) {
+  compareModeState[listId] = !compareModeState[listId];
+  renderAllLists($('benzer-search').value.trim());
+}
+
+function toggleEzberInList(surahNo, ayahNo, listId) {
+  Memorized.toggle(surahNo, ayahNo);
+  renderAllLists($('benzer-search').value.trim());
+}
+
+function removeAyahFromList(listId, surahNo, ayahNo) {
+  SimilarLists.removeAyah(listId, surahNo, ayahNo);
+  showToast('Ayet listeden çıkarıldı');
+  renderAllLists($('benzer-search').value.trim());
+}
+
+function editList(listId) {
+  const list = SimilarLists.getById(listId);
+  if (!list) return;
+  const newTitle = prompt('Listenin yeni başlığını girin:', list.title);
+  if (newTitle !== null && newTitle.trim()) {
+    const newDesc = prompt('Listenin açıklamasını / notunu girin:', list.desc || '') || '';
+    SimilarLists.renameList(listId, newTitle, newDesc);
+    showToast('Liste güncellendi', 'success');
+    renderAllLists($('benzer-search').value.trim());
+  }
+}
+
+function deleteList(listId) {
+  const list = SimilarLists.getById(listId);
+  if (!list) return;
+  if (confirm(`"${list.title}" listesini silmek istediğinizden emin misiniz?`)) {
+    SimilarLists.deleteList(listId);
+    showToast('Liste silindi');
+    renderAllLists($('benzer-search').value.trim());
+  }
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

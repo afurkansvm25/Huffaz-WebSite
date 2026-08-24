@@ -1,156 +1,161 @@
 <!DOCTYPE html>
 <html lang="tr">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cüzler — Huffaz</title>
-  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="../css/main.css">
 </head>
+
 <body>
 
-<div id="loading" class="page-loading">
-  <div class="spinner"></div>
-  <p>Cüzler yükleniyor…</p>
-</div>
+  <div id="loading" class="page-loading">
+    <div class="spinner"></div>
+    <p>Cüzler yükleniyor…</p>
+  </div>
 
-<div id="app" class="hidden">
+  <div id="app" class="hidden">
 
-  <header class="app-bar">
-    <div class="app-bar-nav-btns">
-      <button class="app-bar-btn" onclick="location.href='../index.html'">← Ana Sayfa</button>
-      <button class="app-bar-btn" onclick="history.back()">← Geri</button>
-    </div>
-    <span class="app-bar-title" style="margin-left:8px">🔖 Cüzler</span>
-    <span class="app-bar-sub">30 Cüz</span>
-  </header>
+    <header class="app-bar">
+      <div class="app-bar-nav-btns">
+        <button class="app-bar-btn" onclick="location.href='../index.html'">← Ana Sayfa</button>
+        <button class="app-bar-btn" onclick="history.back()">← Geri</button>
+      </div>
+      <span class="app-bar-title" style="margin-left:8px">🔖 Cüzler</span>
+      <span class="app-bar-sub">30 Cüz</span>
+    </header>
 
-  <div class="cuz-grid" id="cuz-grid"></div>
+    <div class="cuz-grid" id="cuz-grid"></div>
 
-</div>
+  </div>
 
-<script src="../js/data.js"></script>
-<script src="../js/page_map.js"></script>
-<script src="../js/shared.js"></script>
-<script src="../js/auth.js"></script>
-<script>
-'use strict';
+  <script src="../js/data.js"></script>
+  <script src="../js/page_map.js"></script>
+  <script src="../js/shared.js"></script>
+  <script src="../js/auth.js"></script>
+  <script>
+    'use strict';
 
-// Cüz başlangıç isimleri — apostrof yerine ters kesme işareti kullanıyoruz
-const CUZ_ISIMLERI = [
-  "Elif L\u00e2m M\u00eem",
-  "Seyeyak\u00fcl",
-  "Tilke\u02bcr-rusul",
-  "Len ten\u00e2l\u00fc",
-  "Vel muhsan\u00e2t",
-  "L\u00e2 yuhibbull\u00e2h",
-  "Ve iz semi\u02bcu",
-  "Ve lev ennenn\u00e2",
-  "K\u00e2lel mele",
-  "Ve\u02bcalemu",
-  "Ya\u02bctezir\u00fbne",
-  "Ve m\u00e2 min d\u00e2bbe",
-  "Ve m\u00e2 \u00fcberr\u0131\u00fc",
-  "Rubem\u00e2",
-  "Subh\u00e2nellezi",
-  "K\u00e2le elem",
-  "\u0130kterebe",
-  "Kad efleha",
-  "Ve k\u00e2lellezine",
-  "Emmen haleka",
-  "\u00dctlu m\u00e2 \u00fbh\u0131ye",
-  "Ve men yaknut",
-  "Ve m\u00e2 liye",
-  "Femem ezlemu",
-  "\u0130leyhi yureddu",
-  "H\u00e2 M\u00eem",
-  "K\u00e2le feemme",
-  "Kad semi\u02bcall\u00e2h",
-  "Teb\u00e2reke\u02bcllezi",
-  "Amme"
-];
+    // Cüz başlangıç isimleri — apostrof yerine ters kesme işareti kullanıyoruz
+    const CUZ_ISIMLERI = [
+      "Elif L\u00e2m M\u00eem",
+      "Seyekulu",
+      "Tilke\u02bcr-rusul",
+      "Len ten\u00e2l\u00fc",
+      "Vel muhsan\u00e2t",
+      "L\u00e2 yuhibbull\u00e2h",
+      "Ve iz semi\u02bcu",
+      "Ve lev ennen\u00e2",
+      "K\u00e2lel mele",
+      "Ve\u02bcalemu",
+      "Ya\u02bctezir\u00fbne",
+      "Ve m\u00e2 min d\u00e2bbe",
+      "Ve m\u00e2 \u00fcberr\u0131\u00fc",
+      "Elif L\u00e2m R\u00e2",
+      "Subh\u00e2nellezi",
+      "K\u00e2le elem",
+      "\u0130kterebe",
+      "Kad efleha",
+      "Ve k\u00e2lellezine",
+      "Fem\u00e2 k\u00e2ne",
+      "Ve l\u00e2 tucadilu",
+      "Ve men yaknut",
+      "Ve m\u00e2 enzeln\u00e2",
+      "Femen ezlemu",
+      "\u0130leyhi yureddu",
+      "Ve bed\u00e2 lehum",
+      "K\u00e2le fem\u00e2",
+      "Kad semi\u02bcall\u00e2h",
+      "Teb\u00e2reke\u02bcllezi",
+      "Amme"
+    ];
 
-function init() {
-  try {
-    if (typeof QURAN_DATA === 'undefined' || typeof PAGE_MAP === 'undefined') {
-      document.getElementById('loading').innerHTML =
-        '<p style="color:#fff;padding:24px;text-align:center;max-width:400px">' +
-        '\u274c Veri bulunamad\u0131.<br>L\u00fctfen <code>py process_quran.py</code> ve ' +
-        '<code>py fetch_pages.py</code> komutlar\u0131n\u0131 \u00e7al\u0131\u015ft\u0131r\u0131n.</p>';
-      return;
-    }
+    function init() {
+      try {
+        if (typeof QURAN_DATA === 'undefined' || typeof PAGE_MAP === 'undefined') {
+          document.getElementById('loading').innerHTML =
+            '<p style="color:#fff;padding:24px;text-align:center;max-width:400px">' +
+            '\u274c Veri bulunamad\u0131.<br>L\u00fctfen <code>py process_quran.py</code> ve ' +
+            '<code>py fetch_pages.py</code> komutlar\u0131n\u0131 \u00e7al\u0131\u015ft\u0131r\u0131n.</p>';
+          return;
+        }
 
-    const grid = document.getElementById('cuz-grid');
-    const frag = document.createDocumentFragment();
+        const grid = document.getElementById('cuz-grid');
+        const frag = document.createDocumentFragment();
 
-    for (let cuz = 1; cuz <= 30; cuz++) {
-      const startPage = PageHelper.juzToPage(cuz);
-      const endPage   = PageHelper.juzEndPage(cuz);
+        for (let cuz = 1; cuz <= 30; cuz++) {
+          const startPage = PageHelper.juzToPage(cuz);
+          const endPage = PageHelper.juzEndPage(cuz);
 
-      // Ezberleme sayısı
-      let totalAyahs = 0, memAyahs = 0;
-      for (let p = startPage; p <= endPage; p++) {
-        const mapKey = p > 604 ? 604 : p;
-        const ayahs = PageHelper.ayahsForPage(mapKey);
-        totalAyahs += ayahs.length;
-        memAyahs   += ayahs.filter(function(a) {
-          return Memorized.has(a.surahNo, a.ayahNo);
-        }).length;
-      }
-      const pct = totalAyahs > 0 ? Math.round((memAyahs / totalAyahs) * 100) : 0;
+          // Ezberleme sayısı
+          let totalAyahs = 0, memAyahs = 0;
+          for (let p = startPage; p <= endPage; p++) {
+            const mapKey = p > 604 ? 604 : p;
+            const ayahs = PageHelper.ayahsForPage(mapKey);
+            totalAyahs += ayahs.length;
+            memAyahs += ayahs.filter(function (a) {
+              return Memorized.has(a.surahNo, a.ayahNo);
+            }).length;
+          }
+          const pct = totalAyahs > 0 ? Math.round((memAyahs / totalAyahs) * 100) : 0;
 
-      // Cüzün başladığı sure ve ayet
-      const mapKey = startPage > 604 ? 604 : startPage;
-      const startAyahs = PageHelper.ayahsForPage(mapKey);
-      const s = startAyahs[0] || null;
+          // Cüzün başladığı sure ve ayet
+          const mapKey = startPage > 604 ? 604 : startPage;
+          const startAyahs = PageHelper.ayahsForPage(mapKey);
+          const s = startAyahs[0] || null;
 
-      const card = document.createElement('div');
-      card.className = 'cuz-kart';
+          const card = document.createElement('div');
+          card.className = 'cuz-kart';
 
-      var surahInfo = '';
-      if (s) {
-        surahInfo =
-          '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:6px;margin:4px 0">' +
-            '<span style="font-size:.78rem;color:var(--gray-600);font-weight:600">' + s.surahNo + '. ' + s.surahTr + ' (' + s.ayahNo + '. Ayet)</span>' +
-            '<span class="cuz-baslayan-ar" style="font-family:var(--font-ar);font-size:.95rem;color:var(--green-900)">' + s.surahAr + '</span>' +
-          '</div>';
-      }
+          var surahInfo = '';
+          if (s) {
+            surahInfo =
+              '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:6px;margin:4px 0">' +
+              '<span style="font-size:.78rem;color:var(--gray-600);font-weight:600">' + s.surahNo + '. ' + s.surahTr + ' (' + s.ayahNo + '. Ayet)</span>' +
+              '<span class="cuz-baslayan-ar" style="font-family:var(--font-ar);font-size:.95rem;color:var(--green-900)">' + s.surahAr + '</span>' +
+              '</div>';
+          }
 
-      card.innerHTML =
-        '<div style="display:flex;align-items:center;gap:10px">' +
-          '<div class="cuz-no">' + cuz + '</div>' +
-          '<div>' +
+          card.innerHTML =
+            '<div style="display:flex;align-items:center;gap:10px">' +
+            '<div class="cuz-no">' + cuz + '</div>' +
+            '<div>' +
             '<div style="font-size:.72rem;color:var(--gray-400);margin-bottom:2px">Sayfa ' + startPage + '\u2013' + endPage + '</div>' +
             '<div class="cuz-baslayan">' + (CUZ_ISIMLERI[cuz - 1] || '') + '</div>' +
-          '</div>' +
-        '</div>' +
-        surahInfo +
-        '<div class="cuz-prog-row">' +
-          '<div class="prog-bar-wrap" style="height:5px">' +
+            '</div>' +
+            '</div>' +
+            surahInfo +
+            '<div class="cuz-prog-row">' +
+            '<div class="prog-bar-wrap" style="height:5px">' +
             '<div class="prog-bar-fill" style="width:' + pct + '%"></div>' +
-          '</div>' +
-          '<span class="cuz-prog-label">' + memAyahs + '/' + totalAyahs + ' \u00b7 %' + pct + '</span>' +
-        '</div>';
+            '</div>' +
+            '<span class="cuz-prog-label">' + memAyahs + '/' + totalAyahs + ' \u00b7 %' + pct + '</span>' +
+            '</div>';
 
-      card.addEventListener('click', (function(sp) {
-        return function() { location.href = 'sayfalar.html?p=' + sp; };
-      })(startPage));
+          card.addEventListener('click', (function (sp) {
+            return function () { location.href = 'sayfalar.html?p=' + sp; };
+          })(startPage));
 
-      frag.appendChild(card);
+          frag.appendChild(card);
+        }
+
+        grid.appendChild(frag);
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('app').classList.remove('hidden');
+
+      } catch (err) {
+        document.getElementById('loading').innerHTML =
+          '<p style="color:#fff;padding:24px;text-align:center;max-width:500px">' +
+          '\u274c Hata: ' + err.message + '</p>';
+      }
     }
 
-    grid.appendChild(frag);
-    document.getElementById('loading').classList.add('hidden');
-    document.getElementById('app').classList.remove('hidden');
-
-  } catch (err) {
-    document.getElementById('loading').innerHTML =
-      '<p style="color:#fff;padding:24px;text-align:center;max-width:500px">' +
-      '\u274c Hata: ' + err.message + '</p>';
-  }
-}
-
-document.addEventListener('DOMContentLoaded', init);
-</script>
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
 </body>
+
 </html>

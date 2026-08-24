@@ -174,8 +174,12 @@ function init() {
 
   const params = new URLSearchParams(location.search);
   const sParam = params.get('surah');
+  const simParam = params.get('similarList');
   if (sParam) {
     targetSurahNo = parseInt(sParam);
+  }
+  if (simParam) {
+    targetSimilarListId = simParam;
   }
 
   bindEvents();
@@ -185,6 +189,8 @@ function init() {
   $('app').classList.remove('hidden');
 }
 
+let targetSimilarListId = null;
+
 function updateSetupView() {
   const memCount = Memorized.count();
   $('mem-stat-badge').textContent = `${memCount} Ayet Ezberde`;
@@ -193,7 +199,22 @@ function updateSetupView() {
   const btnBasla = $('btn-test-basla');
   const testTuru = $('test-turu') ? $('test-turu').value : 'ardisik';
 
-  if (targetSurahNo) {
+  if (targetSimilarListId && typeof SimilarLists !== 'undefined') {
+    const list = SimilarLists.getById(targetSimilarListId);
+    const listTitle = list ? list.title : 'Benzer Ayetler Listesi';
+    $('setup-title').textContent = `🎯 ${listTitle} Testi`;
+    $('bar-title').textContent = `🎯 ${listTitle}`;
+    $('kapsam-row').classList.add('hidden');
+
+    const questions = buildQuizQuestions(0, 'similar', testTuru);
+    if (questions.length === 0) {
+      descEl.textContent = `ℹ️ Bu listede test oluşturmak için yeterli ayet bulunamadı. Lütfen listeye daha fazla ayet ekleyin.`;
+      btnBasla.disabled = true;
+    } else {
+      descEl.textContent = `"${listTitle}" listesindeki ${list.ayahs.length} ayet üzerinden ${questions.length} soru üretildi.`;
+      btnBasla.disabled = false;
+    }
+  } else if (targetSurahNo) {
     // Özel Sure Testi
     const surahAyahs = QURAN_DATA.filter(a => a.surahNo === targetSurahNo);
     const surahName = surahAyahs.length ? surahAyahs[0].surahTr : `${targetSurahNo}. Sure`;
@@ -292,6 +313,10 @@ function buildQuizQuestions(limit = 0, kapsam = 'ezber', type = 'ardisik') {
     // Kelime Bulma / Boşluk Doldurma Modu
     const questions = [];
     const pool = QURAN_DATA.filter(a => {
+      if (targetSimilarListId && typeof SimilarLists !== 'undefined') {
+        const list = SimilarLists.getById(targetSimilarListId);
+        return list && list.ayahs.includes(`${a.surahNo}:${a.ayahNo}`);
+      }
       if (targetSurahNo) {
         if (a.surahNo !== targetSurahNo) return false;
         return useAll || Memorized.has(a.surahNo, a.ayahNo);
@@ -343,18 +368,37 @@ function buildQuizQuestions(limit = 0, kapsam = 'ezber', type = 'ardisik') {
   } else {
     // Ardışık Ayet Tamamlama Modu
     const pairs = [];
-    for (let i = 0; i < QURAN_DATA.length - 1; i++) {
-      const a1 = QURAN_DATA[i];
-      const a2 = QURAN_DATA[i + 1];
-      if (a1.surahNo === a2.surahNo && a2.ayahNo === a1.ayahNo + 1) {
-        if (targetSurahNo) {
-          if (a1.surahNo === targetSurahNo) {
-            if (useAll || (Memorized.has(a1.surahNo, a1.ayahNo) && Memorized.has(a2.surahNo, a2.ayahNo))) {
+
+    if (targetSimilarListId && typeof SimilarLists !== 'undefined') {
+      // Benzer ayet listesi için o ayetlerin ardıllarını veya kelime testini üret
+      const list = SimilarLists.getById(targetSimilarListId);
+      if (list) {
+        list.ayahs.forEach(key => {
+          const [s, a] = key.split(':').map(Number);
+          const idx = ayahIndex.get(key);
+          if (idx !== undefined && idx < QURAN_DATA.length - 1) {
+            const a1 = QURAN_DATA[idx];
+            const a2 = QURAN_DATA[idx + 1];
+            if (a1.surahNo === a2.surahNo && a2.ayahNo === a1.ayahNo + 1) {
               pairs.push({ type: 'ardisik', prompt: a1, correct: a2 });
             }
           }
-        } else if (useAll || (Memorized.has(a1.surahNo, a1.ayahNo) && Memorized.has(a2.surahNo, a2.ayahNo))) {
-          pairs.push({ type: 'ardisik', prompt: a1, correct: a2 });
+        });
+      }
+    } else {
+      for (let i = 0; i < QURAN_DATA.length - 1; i++) {
+        const a1 = QURAN_DATA[i];
+        const a2 = QURAN_DATA[i + 1];
+        if (a1.surahNo === a2.surahNo && a2.ayahNo === a1.ayahNo + 1) {
+          if (targetSurahNo) {
+            if (a1.surahNo === targetSurahNo) {
+              if (useAll || (Memorized.has(a1.surahNo, a1.ayahNo) && Memorized.has(a2.surahNo, a2.ayahNo))) {
+                pairs.push({ type: 'ardisik', prompt: a1, correct: a2 });
+              }
+            }
+          } else if (useAll || (Memorized.has(a1.surahNo, a1.ayahNo) && Memorized.has(a2.surahNo, a2.ayahNo))) {
+            pairs.push({ type: 'ardisik', prompt: a1, correct: a2 });
+          }
         }
       }
     }
