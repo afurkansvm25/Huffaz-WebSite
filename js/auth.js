@@ -5,8 +5,8 @@
 'use strict';
 
 const Auth = {
-  LS_USERS: 'huffaz_accounts_v3',
-  LS_ACTIVE_USER: 'huffaz_active_user_id_v3',
+  LS_USERS: 'huffaz_accounts_v4',
+  LS_ACTIVE_USER: 'huffaz_active_user_id_v4',
 
   // Global Bulut Veritabanı (Cihazlar arası senkronizasyon için)
   CLOUD_API: 'https://api.restful-api.dev/objects',
@@ -17,9 +17,13 @@ const Auth = {
   _syncTimeout: null,
 
   init() {
-    // Önceki yerel test verilerini temizle
+    // Önceki tüm yerel hesap ve test verilerini temizle (Kullanıcı talebi)
     try {
-      ['huffaz_accounts_v1', 'huffaz_accounts_v2', 'huffaz_active_user_id', 'huffaz_active_user_id_v2', 'huffaz_similar_lists_v1'].forEach(k => {
+      [
+        'huffaz_accounts_v1', 'huffaz_accounts_v2', 'huffaz_accounts_v3',
+        'huffaz_active_user_id', 'huffaz_active_user_id_v2', 'huffaz_active_user_id_v3',
+        'huffaz_similar_lists_v1', 'huffaz_memorized_v1', 'huffaz_bookmarks_v1'
+      ].forEach(k => {
         if (localStorage.getItem(k)) localStorage.removeItem(k);
       });
     } catch (e) {

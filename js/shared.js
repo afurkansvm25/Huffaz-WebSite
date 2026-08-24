@@ -6,7 +6,7 @@
 
 // ── localStorage anahtar yardımcıları (Kullanıcı Profiline Bağlı) ───
 function getUserKey(key) {
-  const activeId = localStorage.getItem('huffaz_active_user_id_v3') || 'guest';
+  const activeId = localStorage.getItem('huffaz_active_user_id_v4') || 'guest';
   return `huffaz_${activeId}_${key}`;
 }
 
