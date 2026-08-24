@@ -387,7 +387,10 @@ const Auth = {
                   ${this.isGuest() ? 'Misafir Modu' : '🟢 Canlı Realtime Database Bağlı'}
                 </div>
               </div>
-              ${!this.isGuest() ? '<button class="btn btn-sm btn-secondary" onclick="Auth.manualSync()" title="Bulut ile Eşitle" style="padding:6px 10px;font-size:.8rem">🔄 Eşitle</button>' : ''}
+              <div style="display:flex;gap:6px;align-items:center">
+                <button id="btn-profile-sync" class="btn btn-sm btn-secondary hidden" onclick="Auth.manualSync()" title="Bulut ile Eşitle" style="padding:6px 10px;font-size:.8rem">🔄 Eşitle</button>
+                <button id="btn-profile-logout" class="btn btn-sm btn-outline hidden" onclick="Auth.logout()" title="Çıkış Yap" style="padding:6px 10px;font-size:.8rem;color:var(--red-600);border-color:var(--red-300)">🚪 Çıkış</button>
+              </div>
             </div>
 
             <!-- İstatistik Özeti -->
@@ -426,7 +429,11 @@ const Auth = {
                 <button id="btn-auth-login" class="btn btn-primary" style="flex:1" onclick="Auth.handleLoginBtn()">Giriş Yap</button>
                 <button id="btn-auth-register" class="btn btn-gold" style="flex:1" onclick="Auth.handleRegisterBtn()">Yeni Kayıt Ol</button>
               </div>
-              ${!this.isGuest() ? '<button class="btn btn-ghost" style="width:100%;margin-top:8px;color:var(--red-600)" onclick="Auth.logout()">Çıkış Yap (Misafir Moduna Dön)</button>' : ''}
+              <div id="auth-logout-row" class="auth-logout-row hidden" style="margin-top:14px;border-top:1px dashed var(--gray-200);padding-top:12px">
+                <button class="btn btn-outline" style="width:100%;color:var(--red-600);border-color:var(--red-300);padding:9px;font-weight:600" onclick="Auth.logout()">
+                  🚪 Hesaptan Çıkış Yap (Misafir Moduna Geç)
+                </button>
+              </div>
             </div>
 
             <!-- 2. Şifre Değiştir Paneli -->
@@ -477,8 +484,13 @@ const Auth = {
   },
 
   updateModalStats() {
+    const isGuest = this.isGuest();
     $('modal-user-name').textContent = this.getUserDisplayName(this._currentUser);
-    $('modal-user-status').textContent = this.isGuest() ? 'Misafir Profili' : '🟢 Canlı Realtime Database Bağlı';
+    $('modal-user-status').textContent = isGuest ? 'Misafir Profili' : '🟢 Canlı Realtime Database Bağlı';
+
+    if ($('btn-profile-sync')) $('btn-profile-sync').classList.toggle('hidden', isGuest);
+    if ($('btn-profile-logout')) $('btn-profile-logout').classList.toggle('hidden', isGuest);
+    if ($('auth-logout-row')) $('auth-logout-row').classList.toggle('hidden', isGuest);
 
     if (typeof Memorized !== 'undefined') {
       $('auth-stat-mem').textContent = Memorized.count();
