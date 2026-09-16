@@ -172,9 +172,10 @@
       </button>
     </div>
 
-    <!-- Sağ: Yer İmi -->
+    <!-- Sağ: Ezber & Yer İmi -->
     <div class="view-mode-right">
-      <button id="btn-bm-sayfa" class="btn btn-sm btn-outline" onclick="togglePageBookmark()">🔖</button>
+      <button id="btn-ezber-sayfa" class="btn btn-sm btn-outline" onclick="togglePageMemorized()" title="Bu Sayfayı Ezberledim">✓ Sayfayı Ezberledim</button>
+      <button id="btn-bm-sayfa" class="btn btn-sm btn-outline" onclick="togglePageBookmark()" title="Sayfayı Yer İmlerine Ekle">🔖</button>
     </div>
   </div>
 
@@ -309,6 +310,7 @@ function renderPage(pageNo) {
   $('sayfa-badge-top').textContent = `Sayfa ${pageNo}`;
   $('cuz-badge-top').textContent   = `${juzNo}. Cüz`;
   updateBmBtn();
+  updateEzberBtn();
 
   $('btn-onceki').disabled = (pageNo === 1);
   $('btn-sonraki').disabled = (pageNo === TOTAL);
@@ -376,6 +378,7 @@ function renderListeMode(ayahs, pageNo, surahs) {
       const s = +row.dataset.s, a = +row.dataset.a;
       const now = Memorized.toggle(s, a);
       row.classList.toggle('ezber', now);
+      updateEzberBtn();
       showToast(now ? '✓ Ezberlendi' : '✗ İşaret kaldırıldı', now ? 'success' : '');
     });
     row.querySelector('.ayet-bm-btn').addEventListener('click', e => {
@@ -456,6 +459,48 @@ function renderMushafPdfMode(pageNo, juzNo, surahs) {
       </div>
     `;
   }
+}
+
+// ── Sayfa Ezber Durumu ──
+function isPageMemorized(pageNo) {
+  const mapKey = pageNo > 604 ? 604 : pageNo;
+  const ayahs = PageHelper.ayahsForPage(mapKey);
+  if (!ayahs || ayahs.length === 0) return false;
+  return ayahs.every(a => Memorized.has(a.surahNo, a.ayahNo));
+}
+
+function togglePageMemorized() {
+  const mapKey = currentPage > 604 ? 604 : currentPage;
+  const ayahs = PageHelper.ayahsForPage(mapKey);
+  if (!ayahs || ayahs.length === 0) return;
+
+  const allMem = isPageMemorized(currentPage);
+  if (allMem) {
+    ayahs.forEach(a => Memorized._set.delete(`${a.surahNo}:${a.ayahNo}`));
+    Memorized.save();
+    showToast('Sayfa ezber işareti kaldırıldı');
+  } else {
+    ayahs.forEach(a => Memorized._set.add(`${a.surahNo}:${a.ayahNo}`));
+    Memorized.save();
+    showToast('✓ Sayfa ezberlendi!', 'success');
+  }
+
+  updateEzberBtn();
+
+  if (viewMode === 'liste') {
+    document.querySelectorAll('.ayet-row').forEach(row => {
+      const s = +row.dataset.s, a = +row.dataset.a;
+      row.classList.toggle('ezber', Memorized.has(s, a));
+    });
+  }
+}
+
+function updateEzberBtn() {
+  const btn = $('btn-ezber-sayfa');
+  if (!btn) return;
+  const isMem = isPageMemorized(currentPage);
+  btn.textContent = isMem ? '✓ Sayfa Ezberlendi' : '✓ Sayfayı Ezberledim';
+  btn.className   = isMem ? 'btn btn-sm btn-success' : 'btn btn-sm btn-outline';
 }
 
 // ── Yer İmi (sayfa) ──

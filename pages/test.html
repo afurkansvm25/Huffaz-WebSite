@@ -37,6 +37,19 @@
       gap: 12px;
       margin-top: 18px;
     }
+    .retry-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #fef2f2;
+      color: #b91c1c;
+      border: 1px solid #fecaca;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: .8rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
   </style>
 </head>
 <body>
@@ -75,6 +88,7 @@
             <option value="ardisik" selected>Ardışık Ayet Tamamlama</option>
             <option value="kelime">Ayet İçi Kelime Bulma (Boşluk Doldurma)</option>
             <option value="son_kelime">Ayet Sonu Kelimesi Bulma (Fâsıla)</option>
+            <option value="sure_bul">Ayet Hangi Surede?</option>
           </select>
         </div>
 
@@ -128,6 +142,7 @@
       </div>
 
       <div class="question-card">
+        <div id="q-retry-badge" class="retry-badge hidden">⚠️ Önceki Hata (Tekrar Sorusu)</div>
         <p class="q-label" id="q-label-text">Bu ayetten sonra hangi ayet gelir?</p>
         <p id="q-sure-info" class="q-sure-info"></p>
         <div id="q-text" class="q-text" dir="rtl"></div>
@@ -173,6 +188,7 @@
 let ayahIndex = new Map();
 let quizState = null;
 let targetSurahNo = null;
+let ALL_SURAHS = [];
 
 function init() {
   if (typeof QURAN_DATA === 'undefined' || !QURAN_DATA.length) {
@@ -183,6 +199,16 @@ function init() {
   // Ayet indexi oluştur
   QURAN_DATA.forEach((ayah, idx) => {
     ayahIndex.set(`${ayah.surahNo}:${ayah.ayahNo}`, idx);
+  });
+
+  // Tüm surelerin listesini oluştur
+  const seenSurahs = new Set();
+  ALL_SURAHS = [];
+  QURAN_DATA.forEach(a => {
+    if (!seenSurahs.has(a.surahNo)) {
+      seenSurahs.add(a.surahNo);
+      ALL_SURAHS.push({ no: a.surahNo, tr: a.surahTr, ar: a.surahAr });
+    }
   });
 
   const params = new URLSearchParams(location.search);
@@ -208,10 +234,31 @@ function updateSetupView() {
   const memCount = Memorized.count();
   $('mem-stat-badge').textContent = `${memCount} Ayet Ezberde`;
 
+  const selTestTuru = $('test-turu');
+  if (selTestTuru) {
+    const sureBulOpt = selTestTuru.querySelector('option[value="sure_bul"]');
+    if (targetSurahNo || targetSimilarListId) {
+      if (sureBulOpt) {
+        sureBulOpt.remove();
+        if (selTestTuru.value === 'sure_bul') selTestTuru.value = 'ardisik';
+      }
+    } else {
+      if (!sureBulOpt) {
+        const opt = document.createElement('option');
+        opt.value = 'sure_bul';
+        opt.textContent = 'Ayet Hangi Surede?';
+        selTestTuru.appendChild(opt);
+      }
+    }
+  }
+
   const descEl = $('setup-desc');
   const btnBasla = $('btn-test-basla');
   const testTuru = $('test-turu') ? $('test-turu').value : 'ardisik';
-  const typeText = (testTuru === 'son_kelime') ? 'ayet sonu kelime sorusu' : (testTuru === 'kelime') ? 'kelime bulma sorusu' : 'ardışık ayet sorusu';
+  const typeText = (testTuru === 'son_kelime') ? 'ayet sonu kelime sorusu'
+                 : (testTuru === 'kelime') ? 'kelime bulma sorusu'
+                 : (testTuru === 'sure_bul') ? 'sure bulma sorusu'
+                 : 'ardışık ayet sorusu';
 
   if (targetSimilarListId && typeof SimilarLists !== 'undefined') {
     const list = SimilarLists.getById(targetSimilarListId);
@@ -451,6 +498,28 @@ function buildQuizQuestions(limit = 0, kapsam = 'ezber', type = 'ardisik') {
 
     return limit > 0 ? questions.slice(0, limit) : questions;
 
+  } else if (type === 'sure_bul') {
+    // Ayet Hangi Surede? Modu
+    const questions = [];
+    pool.forEach(ayah => {
+      questions.push({
+        type: 'sure_bul',
+        promptAyah: ayah,
+        correctSurah: {
+          no: ayah.surahNo,
+          tr: ayah.surahTr,
+          ar: ayah.surahAr
+        }
+      });
+    });
+
+    for (let i = questions.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [questions[i], questions[j]] = [questions[j], questions[i]];
+    }
+
+    return limit > 0 ? questions.slice(0, limit) : questions;
+
   } else {
     // Ardışık Ayet Tamamlama Modu
     const pairs = [];
@@ -597,6 +666,13 @@ function getLastWordDistractors(correctWord, promptAyah, count = 3) {
   return distractors;
 }
 
+// ── Sure Bulma Çeldiricileri ──
+function getSurahDistractors(correctSurahNo, count = 3) {
+  const others = ALL_SURAHS.filter(s => s.no !== correctSurahNo);
+  const shuffled = [...others].sort(() => Math.random() - .5);
+  return shuffled.slice(0, count);
+}
+
 function startTest() {
   const limit = parseInt($('soru-sayisi').value) || 0;
   const kapsam = targetSurahNo ? $('test-kapsami').value : $('test-kapsami').value;
@@ -610,6 +686,7 @@ function startTest() {
 
   quizState = {
     questions,
+    initialTotal: questions.length,
     currentIdx: 0,
     userAnswers: {},
     answered: false
@@ -633,6 +710,11 @@ function renderCurrentQuestion() {
   $('quiz-puan').textContent = `Puan: ${currentScore} / ${answeredCount}`;
   $('quiz-fill').style.width = `${((curr - 1) / total) * 100}%`;
 
+  const retryBadge = $('q-retry-badge');
+  if (retryBadge) {
+    retryBadge.classList.toggle('hidden', !q.isRetry);
+  }
+
   const btnOnceki = $('btn-onceki');
   if (btnOnceki) {
     btnOnceki.classList.toggle('hidden', quizState.currentIdx === 0);
@@ -641,7 +723,42 @@ function renderCurrentQuestion() {
   const optArea = $('options-area');
   optArea.innerHTML = '';
 
-  if (q.type === 'son_kelime') {
+  if (q.type === 'sure_bul') {
+    // Ayet Hangi Surede? Sorusu
+    $('q-label-text').textContent = 'Bu ayet hangi surededir?';
+    $('q-sure-info').innerHTML = prevAnswer
+      ? `${q.promptAyah.surahNo}. ${q.promptAyah.surahTr} Suresi (${q.promptAyah.ayahNo}. Ayet):`
+      : '<span style="color:var(--gray-500);font-size:.82rem">Aşağıdaki seçeneklerden doğru sureyi seçiniz:</span>';
+    $('q-text').textContent = getCleanAyahText(q.promptAyah);
+
+    if (!q.options) {
+      const distractors = getSurahDistractors(q.correctSurah.no, 3);
+      q.options = [q.correctSurah, ...distractors].sort(() => Math.random() - .5);
+    }
+
+    q.options.forEach(opt => {
+      const btn = document.createElement('button');
+      btn.className = 'option-btn';
+      btn.style.display = 'flex';
+      btn.style.justifyContent = 'space-between';
+      btn.style.alignItems = 'center';
+      btn.style.padding = '12px 18px';
+      btn.innerHTML = `
+        <span style="font-weight:700;font-size:1rem;color:inherit">${opt.no}. ${opt.tr}</span>
+        <span style="font-family:'Amiri',serif;font-size:1.3rem;direction:rtl">${opt.ar}</span>
+      `;
+
+      if (prevAnswer) {
+        btn.disabled = true;
+        if (opt.no === q.correctSurah.no) btn.classList.add('correct');
+        if (!prevAnswer.isCorrect && opt.no === prevAnswer.selectedNo) btn.classList.add('wrong');
+      } else {
+        btn.addEventListener('click', () => handleSurahAnswer(opt, q.correctSurah, btn, q));
+      }
+      optArea.appendChild(btn);
+    });
+
+  } else if (q.type === 'son_kelime') {
     // Ayet Sonu Kelime Sorusu (Fâsıla)
     $('q-label-text').textContent = 'Ayetin sonundaki boşluğa hangi kelime gelmelidir? (Fâsıla)';
     $('q-sure-info').innerHTML = `${q.promptAyah.surahNo}. ${q.promptAyah.surahTr} Suresi<span id="prompt-ayah-ref" style="${prevAnswer ? 'display:inline' : 'display:none'}">, ${q.promptAyah.ayahNo}. Ayet</span>:`;
@@ -756,6 +873,15 @@ function handleAnswer(selected, correct, selectedBtn) {
     feedbackText
   };
 
+  if (!isCorrect) {
+    const retryQ = {
+      ...quizState.questions[quizState.currentIdx],
+      isRetry: true,
+      options: null
+    };
+    quizState.questions.push(retryQ);
+  }
+
   const currentScore = Object.values(quizState.userAnswers).filter(a => a.isCorrect).length;
   const answeredCount = Object.keys(quizState.userAnswers).length;
   $('quiz-puan').textContent = `Puan: ${currentScore} / ${answeredCount}`;
@@ -802,6 +928,15 @@ function handleWordAnswer(selectedWord, correctWord, selectedBtn, q) {
     feedbackText
   };
 
+  if (!isCorrect) {
+    const retryQ = {
+      ...quizState.questions[quizState.currentIdx],
+      isRetry: true,
+      options: null
+    };
+    quizState.questions.push(retryQ);
+  }
+
   const currentScore = Object.values(quizState.userAnswers).filter(a => a.isCorrect).length;
   const answeredCount = Object.keys(quizState.userAnswers).length;
   $('quiz-puan').textContent = `Puan: ${currentScore} / ${answeredCount}`;
@@ -814,6 +949,59 @@ function handleWordAnswer(selectedWord, correctWord, selectedBtn, q) {
   $$('.option-btn').forEach(btn => {
     btn.disabled = true;
     if (btn.textContent.trim() === correctWord) {
+      btn.classList.add('correct');
+    }
+  });
+
+  if (!isCorrect) {
+    selectedBtn.classList.add('wrong');
+  }
+
+  const fb = $('feedback-area');
+  fb.classList.remove('hidden');
+  fb.className = 'feedback-area ' + (isCorrect ? 'correct' : 'wrong');
+  fb.textContent = feedbackText;
+
+  const isLast = (quizState.currentIdx + 1 >= quizState.questions.length);
+  const nextBtn = $('btn-sonraki');
+  nextBtn.textContent = isLast ? 'Sonuçları Gör 🏆' : 'Sonraki Soru →';
+  nextBtn.classList.remove('hidden');
+}
+
+function handleSurahAnswer(selectedSurah, correctSurah, selectedBtn, q) {
+  if (quizState.answered) return;
+  quizState.answered = true;
+
+  const isCorrect = (selectedSurah.no === correctSurah.no);
+  const feedbackText = isCorrect
+    ? `✓ Doğru! Bu ayet ${correctSurah.no}. ${correctSurah.tr} suresindedir. (${q.promptAyah.ayahNo}. ayet)`
+    : `✗ Yanlış. Bu ayet ${correctSurah.no}. ${correctSurah.tr} suresindedir. (${q.promptAyah.ayahNo}. ayet)`;
+
+  quizState.userAnswers[quizState.currentIdx] = {
+    isCorrect,
+    selectedNo: selectedSurah.no,
+    feedbackText
+  };
+
+  if (!isCorrect) {
+    const retryQ = {
+      ...quizState.questions[quizState.currentIdx],
+      isRetry: true,
+      options: null
+    };
+    quizState.questions.push(retryQ);
+  }
+
+  const currentScore = Object.values(quizState.userAnswers).filter(a => a.isCorrect).length;
+  const answeredCount = Object.keys(quizState.userAnswers).length;
+  $('quiz-puan').textContent = `Puan: ${currentScore} / ${answeredCount}`;
+
+  // Surenin adını ve ayet numarasını göster
+  $('q-sure-info').innerHTML = `${q.promptAyah.surahNo}. ${q.promptAyah.surahTr} Suresi (${q.promptAyah.ayahNo}. Ayet):`;
+
+  $$('.option-btn').forEach(btn => {
+    btn.disabled = true;
+    if (btn.textContent.includes(correctSurah.tr)) {
       btn.classList.add('correct');
     }
   });
@@ -852,21 +1040,25 @@ function prevQuestion() {
 function showResults() {
   showScreen('sonuc');
   const total = quizState.questions.length;
-  const score = Object.values(quizState.userAnswers).filter(a => a.isCorrect).length;
-  const pct = Math.round((score / total) * 100);
+  const initialTotal = quizState.initialTotal || total;
+  const correctFirstTry = Object.entries(quizState.userAnswers).filter(([idx, a]) => parseInt(idx) < initialTotal && a.isCorrect).length;
+  const retryCount = total - initialTotal;
+  const pct = Math.round((correctFirstTry / initialTotal) * 100);
 
-  $('sonuc-skor').textContent = `${score} / ${total}`;
+  $('sonuc-skor').textContent = retryCount > 0
+    ? `${correctFirstTry} / ${initialTotal} (İlk Deneme)`
+    : `${correctFirstTry} / ${initialTotal}`;
   $('sonuc-pct').textContent = `%${pct} Başarı`;
 
   let emoji = '🏆', msg = '';
   if (pct === 100) {
     emoji = '🌟'; msg = 'Kusursuz! Hafızlığınız mükemmel seviyede. Tebrikler!';
   } else if (pct >= 80) {
-    emoji = '🎉'; msg = 'Harika bir performans! Birkaç küçük tekrar ile kusursuzlaşabilir.';
+    emoji = '🎉'; msg = 'Harika bir performans! ' + (retryCount > 0 ? `${retryCount} adet hatalı soru tekrar edilerek pekiştirildi.` : 'Birkaç küçük tekrar ile kusursuzlaşabilir.');
   } else if (pct >= 60) {
-    emoji = '👍'; msg = 'Gayet iyi. Düzenli tekrarlarla hafızlığınızı daha da pekiştirebilirsiniz.';
+    emoji = '👍'; msg = 'Gayet iyi. ' + (retryCount > 0 ? `${retryCount} adet hatalı soru tekrar edilerek pekiştirildi.` : 'Düzenli tekrarlarla hafızlığınızı daha da pekiştirebilirsiniz.');
   } else {
-    emoji = '📖'; msg = 'Biraz daha tekrar yapmanız faydalı olacaktır. Gayretiniz daim olsun!';
+    emoji = '📖'; msg = 'Biraz daha tekrar yapmanız faydalı olacaktır. ' + (retryCount > 0 ? 'Yapılan tekrarlarla hatalı sorular gözden geçirildi.' : 'Gayretiniz daim olsun!');
   }
 
   $('sonuc-emoji').textContent = emoji;
